@@ -75,10 +75,16 @@ export class Store extends Emitter implements Source<AppState> {
   }
 
   nudgeBpm(direction: 1 | -1): void {
+    this.setBpm(this.state.transport.bpm + direction * BPM_NUDGE);
+  }
+
+  /** Sets the tempo, rounded to a whole bpm and clamped to the allowed range. */
+  setBpm(bpm: number): void {
+    if (!Number.isFinite(bpm)) return;
     const { transport } = this.state;
-    const bpm = clampBpm(transport.bpm + direction * BPM_NUDGE);
-    if (bpm === transport.bpm) return;
-    this.update({ transport: { ...transport, bpm } });
+    const next = clampBpm(Math.round(bpm));
+    if (next === transport.bpm) return;
+    this.update({ transport: { ...transport, bpm: next } });
   }
 
   togglePlay(): void {

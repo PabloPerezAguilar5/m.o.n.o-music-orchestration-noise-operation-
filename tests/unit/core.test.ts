@@ -3,7 +3,7 @@ import { pulsesAt } from '../../src/core/activity';
 import { clampNodePosition, DEFAULT_POSITIONS, MASTER_POSITION } from '../../src/core/geometry';
 import { INSTRUMENT_IDS, isSequenced, NODE_IDS, NODE_SPECS } from '../../src/core/nodes';
 import { DEFAULT_PATTERNS, hasHitAt, STEPS, toggleStep } from '../../src/core/patterns';
-import { clampBpm, StepClock, stepDuration } from '../../src/core/transport';
+import { clampBpm, parseBpm, StepClock, stepDuration } from '../../src/core/transport';
 
 describe('nodes', () => {
   it('has seven instrument types plus master', () => {
@@ -53,10 +53,22 @@ describe('patterns', () => {
 });
 
 describe('transport', () => {
-  it('clamps bpm to 60–200', () => {
-    expect(clampBpm(20)).toBe(60);
+  it('clamps bpm to 40–300', () => {
+    expect(clampBpm(20)).toBe(40);
+    expect(clampBpm(40)).toBe(40);
     expect(clampBpm(120)).toBe(120);
-    expect(clampBpm(999)).toBe(200);
+    expect(clampBpm(300)).toBe(300);
+    expect(clampBpm(999)).toBe(300);
+  });
+
+  it('parses a typed tempo, clamped, and rejects anything else', () => {
+    expect(parseBpm('128')).toBe(128);
+    expect(parseBpm(' 95 ')).toBe(95);
+    expect(parseBpm('7')).toBe(40);
+    expect(parseBpm('999')).toBe(300);
+    for (const bad of ['', '  ', 'abc', '12a', '-90', '120.5', '1e2']) {
+      expect(parseBpm(bad), bad).toBeNull();
+    }
   });
 
   it('computes sixteenth-note duration', () => {

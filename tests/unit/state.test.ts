@@ -93,13 +93,29 @@ describe('Store', () => {
     expect(store.getState().patterns.drum[0]?.[1]).toBe(true);
   });
 
-  it('nudges bpm by 5 within 60–200', () => {
+  it('nudges bpm by 1 within 40–300', () => {
     store.nudgeBpm(1);
-    expect(store.getState().transport.bpm).toBe(125);
-    for (let i = 0; i < 40; i++) store.nudgeBpm(1);
-    expect(store.getState().transport.bpm).toBe(200);
-    for (let i = 0; i < 60; i++) store.nudgeBpm(-1);
-    expect(store.getState().transport.bpm).toBe(60);
+    expect(store.getState().transport.bpm).toBe(121);
+    store.nudgeBpm(-1);
+    store.nudgeBpm(-1);
+    expect(store.getState().transport.bpm).toBe(119);
+    for (let i = 0; i < 300; i++) store.nudgeBpm(1);
+    expect(store.getState().transport.bpm).toBe(300);
+    for (let i = 0; i < 300; i++) store.nudgeBpm(-1);
+    expect(store.getState().transport.bpm).toBe(40);
+  });
+
+  it('sets bpm directly, rounded and clamped, ignoring non-numbers', () => {
+    store.setBpm(133);
+    expect(store.getState().transport.bpm).toBe(133);
+    store.setBpm(97.6);
+    expect(store.getState().transport.bpm).toBe(98);
+    store.setBpm(10);
+    expect(store.getState().transport.bpm).toBe(40);
+    store.setBpm(1000);
+    expect(store.getState().transport.bpm).toBe(300);
+    store.setBpm(Number.NaN);
+    expect(store.getState().transport.bpm).toBe(300);
   });
 
   it('tracks the playhead only while playing and resets it on stop', () => {

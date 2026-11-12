@@ -12,7 +12,7 @@ import type { KnobInputEvent } from './mono-knob';
 import './mono-step-grid';
 import type { StepToggleEvent } from './mono-step-grid';
 import './mono-tempo';
-import type { TempoNudgeEvent } from './mono-tempo';
+import type { TempoNudgeEvent, TempoSetEvent } from './mono-tempo';
 import './mono-type-switch';
 import type { TypeChangeEvent } from './mono-type-switch';
 import './mono-wave';
@@ -271,6 +271,7 @@ export class MonoPanel extends LitElement {
         return html`<mono-tempo
           .bpm=${this.bpm.value}
           @tempo-nudge=${this.onTempo}
+          @tempo-set=${this.onTempoSet}
           @transport-toggle=${this.onTransport}
         ></mono-tempo>`;
     }
@@ -310,6 +311,10 @@ export class MonoPanel extends LitElement {
 
   private readonly onTempo = (event: TempoNudgeEvent): void => {
     store.nudgeBpm(event.detail.direction);
+  };
+
+  private readonly onTempoSet = (event: TempoSetEvent): void => {
+    store.setBpm(event.detail.bpm);
   };
 
   private readonly onTransport = (): void => {

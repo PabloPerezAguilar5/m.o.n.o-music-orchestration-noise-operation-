@@ -66,5 +66,7 @@ export const TEXT = {
   removeNode: 'Quitar nodo',
   slower: 'Bajar tempo',
   faster: 'Subir tempo',
+  editTempo: 'Tempo: tocá para escribirlo',
+  tempoInput: 'Tempo en BPM',
   playStop: 'Reproducir o detener',
 } as const;

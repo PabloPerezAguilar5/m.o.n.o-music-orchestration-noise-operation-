@@ -239,15 +239,96 @@ test.describe('panel', () => {
     await expect(step).toHaveClass(/\ba\b/);
   });
 
-  test('el tempo sube y baja de a 5 entre 60 y 200', async ({ page }) => {
+  test('el tempo sube y baja de a 1', async ({ page }) => {
     const bpm = page.locator('#bv');
     await expect(bpm).toHaveText('120');
     await page.click('[data-b="1"]');
-    await expect(bpm).toHaveText('125');
-    for (let i = 0; i < 20; i++) await page.click('[data-b="1"]');
-    await expect(bpm).toHaveText('200');
-    for (let i = 0; i < 32; i++) await page.click('[data-b="-1"]');
-    await expect(bpm).toHaveText('60');
+    await expect(bpm).toHaveText('121');
+    await page.click('[data-b="-1"]');
+    await page.click('[data-b="-1"]');
+    await expect(bpm).toHaveText('119');
+
+    // Keyboard activation also steps by one.
+    await page.focus('[data-b="1"]');
+    await page.keyboard.press('Enter');
+    await expect(bpm).toHaveText('120');
+  });
+
+  test('mantener apretado + acelera el cambio y soltar lo frena', async ({ page }) => {
+    const plus = page.locator('[data-b="1"]');
+    const bpm = async () => Number(await page.locator('#bv').textContent());
+    const box = await plus.boundingBox();
+    if (!box) throw new Error('+ is not visible');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    const early = (await bpm()) - 120;
+    await page.waitForTimeout(700);
+    const late = (await bpm()) - 120 - early;
+    await page.mouse.up();
+
+    expect(early).toBeGreaterThanOrEqual(2); // first step + repeats after the hold delay
+    expect(late).toBeGreaterThan(early * 2); // the second stretch moves much faster
+    const released = await bpm();
+    await page.waitForTimeout(400);
+    expect(await bpm()).toBe(released);
+  });
+
+  test('mantener apretado - llega al minimo y se queda ahi', async ({ page }) => {
+    const minus = page.locator('[data-b="-1"]');
+    const box = await minus.boundingBox();
+    if (!box) throw new Error('- is not visible');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await expect(page.locator('#bv')).toHaveText('40', { timeout: 10_000 });
+    await page.waitForTimeout(300);
+    await page.mouse.up();
+    await expect(page.locator('#bv')).toHaveText('40');
+  });
+
+  test('tocar el display permite escribir el tempo, entre 40 y 300', async ({ page }) => {
+    const display = page.locator('mono-tempo .lcd');
+    const input = page.locator('#bv-input');
+    const bpm = page.locator('#bv');
+
+    const type = async (text: string, confirm: 'Enter' | 'Escape' | 'blur' = 'Enter') => {
+      await display.click();
+      await expect(input).toBeFocused();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.type(text);
+      if (confirm === 'blur') await page.click('#nd-master');
+      else await page.keyboard.press(confirm);
+      await expect(input).toHaveCount(0);
+    };
+
+    await type('128');
+    await expect(bpm).toHaveText('128');
+    await type('999');
+    await expect(bpm).toHaveText('300');
+    await page.click('[data-b="1"]');
+    await expect(bpm).toHaveText('300');
+    await type('5');
+    await expect(bpm).toHaveText('40');
+    await page.click('[data-b="-1"]');
+    await expect(bpm).toHaveText('40');
+    await type('abc');
+    await expect(bpm).toHaveText('40');
+    await type('90', 'Escape');
+    await expect(bpm).toHaveText('40');
+    await type('95', 'blur');
+    await expect(bpm).toHaveText('95');
+  });
+
+  test('el display del tempo no cambia de ancho con 2 o 3 cifras', async ({ page }) => {
+    const width = () => page.locator('mono-tempo .lcd').evaluate((el) => el.getBoundingClientRect().width);
+    const wide = await width();
+    await page.locator('mono-tempo .lcd').click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('45');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#bv')).toHaveText('45');
+    expect(await width()).toBeCloseTo(wide, 1);
   });
 
   test('el boton del panel MASTER arranca y detiene, y el cabezal se borra al parar', async ({
