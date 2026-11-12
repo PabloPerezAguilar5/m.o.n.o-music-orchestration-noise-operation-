@@ -1,0 +1,35 @@
+:root {
+  color-scheme: dark;
+  --bg: #1B1B2A;
+  --ink: #EDEDF7;
+  --dim: #4a4a63;
+  /* Colour of the node in context; overridden per node and by the panel. */
+  --c: #EDEDF7;
+  /* Knob size. */
+  --ks: clamp(30px, 7vh, 48px);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+html {
+  height: 100%;
+  scroll-padding-top: env(safe-area-inset-top, 0px);
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  overflow: hidden;
+  user-select: none;
+}
