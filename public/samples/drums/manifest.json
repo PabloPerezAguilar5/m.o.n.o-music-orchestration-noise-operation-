@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "rows": ["kick","snare","hat","perc"],
+  "kits": [
+    {
+      "id": "909samples",
+      "files": [
+        { "file": "kick-1.wav", "row": "kick" },
+        { "file": "kick-2.wav", "row": "kick" },
+        { "file": "kick-3.wav", "row": "kick" },
+        { "file": "snare-long.wav", "row": "snare" },
+        { "file": "snare-low.wav", "row": "snare" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat-1.wav", "row": "hat" },
+        { "file": "hat-2.wav", "row": "hat" },
+        { "file": "hat-3.wav", "row": "hat" },
+        { "file": "clap.wav", "row": "perc" },
+        { "file": "open-hat.wav", "row": null },
+        { "file": "crash.wav", "row": null },
+        { "file": "ride.wav", "row": null },
+        { "file": "tom-hi.wav", "row": null },
+        { "file": "tom-mid.wav", "row": null }
+      ]
+    },
+    {
+      "id": "freaksamples",
+      "files": [
+        { "file": "kick-gnarl-5.wav", "row": "kick" },
+        { "file": "kick-fm-1.wav", "row": "kick" },
+        { "file": "kick-fm-5.wav", "row": "kick" },
+        { "file": "kick-fm-6.wav", "row": "kick" },
+        { "file": "snare-spring.wav", "row": "snare" },
+        { "file": "snare-elektro-2.wav", "row": "snare" },
+        { "file": "snare-fm-3.wav", "row": "snare" },
+        { "file": "snare-love.wav", "row": "snare" },
+        { "file": "hat-fm-2.wav", "row": "hat" },
+        { "file": "hat-fm-9.wav", "row": "hat" },
+        { "file": "hat-close.wav", "row": "hat" },
+        { "file": "hat-elektro-1.wav", "row": "hat" },
+        { "file": "hat-elektro-3.wav", "row": "hat" },
+        { "file": "hat-elektro-4.wav", "row": "hat" },
+        { "file": "perc-fm-3.wav", "row": "perc" },
+        { "file": "woodblock-hi-spring.wav", "row": null }
+      ]
+    },
+    {
+      "id": "glitch",
+      "files": [
+        { "file": "kick.wav", "row": "kick" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat.wav", "row": "hat" },
+        { "file": "perc.wav", "row": "perc" }
+      ]
+    },
+    {
+      "id": "samples808",
+      "files": [
+        { "file": "kick-long.wav", "row": "kick" },
+        { "file": "kick-short.wav", "row": "kick" },
+        { "file": "snare-grain.wav", "row": "snare" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat.wav", "row": "hat" },
+        { "file": "woodblock.wav", "row": "perc" },
+        { "file": "open-hat.wav", "row": null },
+        { "file": "clap.wav", "row": null },
+        { "file": "conga-hi.wav", "row": null },
+        { "file": "ride.wav", "row": null },
+        { "file": "tom-hi.wav", "row": null },
+        { "file": "rimshot.wav", "row": null }
+      ]
+    },
+    {
+      "id": "trip",
+      "files": [
+        { "file": "kick.wav", "row": "kick" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat.wav", "row": "hat" },
+        { "file": "perc.wav", "row": "perc" }
+      ]
+    }
+  ]
+}
