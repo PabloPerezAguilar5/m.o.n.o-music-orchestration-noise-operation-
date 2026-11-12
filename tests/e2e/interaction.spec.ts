@@ -375,6 +375,31 @@ test.describe('panel', () => {
     await expect(key('hard')).toHaveClass(/\ba\b/);
   });
 
+  test('el teclado de LEAD empieza en C con las negras en su lugar', async ({ page }) => {
+    await addNode(page, 'lead');
+    const white = page.locator('mono-keys .wk');
+    await expect(white).toHaveText(['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C', 'D', 'E']);
+
+    // Each black key must straddle the boundary between the two white keys it belongs to.
+    const between = await page.locator('mono-keys').evaluate((keys) => {
+      const root = keys.shadowRoot!;
+      const whites = [...root.querySelectorAll('.wk')].map((key) => ({
+        label: key.textContent!.trim(),
+        rect: key.getBoundingClientRect(),
+      }));
+      return [...root.querySelectorAll<HTMLElement>('.bk')].map((key) => {
+        const rect = key.getBoundingClientRect();
+        const centre = rect.left + rect.width / 2;
+        let left = -1;
+        whites.forEach((w, i) => {
+          if (w.rect.left <= centre) left = i;
+        });
+        return `${key.dataset.note} ${whites[left]!.label}-${whites[left + 1]?.label ?? '?'}`;
+      });
+    });
+    expect(between).toEqual(['C# C-D', 'D# D-E', 'F# F-G', 'G# G-A', 'A# A-B', 'C# C-D', 'D# D-E']);
+  });
+
   test('las teclas de LEAD se encienden al tocarlas y prenden el nodo', async ({ page }) => {
     await addNode(page, 'lead');
     await page.click('#play'); // stop, so only the key press can light the node

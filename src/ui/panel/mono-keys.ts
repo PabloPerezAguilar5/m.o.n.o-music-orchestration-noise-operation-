@@ -1,6 +1,7 @@
 import { css, html, LitElement, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
+import { keyboardLayout } from '../../core/keyboard';
 import { reset } from '../styles/shared';
 
 export type KeyPressEvent = CustomEvent<{ semitone: number }>;
@@ -8,31 +9,12 @@ export type KeyPressEvent = CustomEvent<{ semitone: number }>;
 /** How long a key stays lit after a press. */
 const PRESS_MS = 220;
 
-/** White keys from E, with their distance in semitones from the first one. */
-const WHITE_KEYS = [
-  { label: 'E', semitone: 0 },
-  { label: 'F', semitone: 1 },
-  { label: 'G', semitone: 3 },
-  { label: 'A', semitone: 5 },
-  { label: 'B', semitone: 7 },
-  { label: 'C', semitone: 8 },
-  { label: 'D', semitone: 10 },
-  { label: 'E', semitone: 12 },
-  { label: 'F', semitone: 13 },
-  { label: 'G', semitone: 15 },
-] as const;
+/** Ten white keys from C: C D E F G A B C D E. */
+const LAYOUT = keyboardLayout(10);
+/** Width of one white key, in % of the keyboard. */
+const WHITE_WIDTH = 100 / LAYOUT.white.length;
 
-/** Black keys: `after` is the index of the white key on their left. */
-const BLACK_KEYS = [
-  { after: 1, semitone: 2 },
-  { after: 2, semitone: 4 },
-  { after: 3, semitone: 6 },
-  { after: 5, semitone: 9 },
-  { after: 6, semitone: 11 },
-  { after: 8, semitone: 14 },
-] as const;
-
-/** LEAD keyboard, played live. Fires `key-press` with the semitone above the lowest key. */
+/** LEAD keyboard, played live. Fires `key-press` with the semitone above the lowest C. */
 @customElement('mono-keys')
 export class MonoKeys extends LitElement {
   static override styles = [
@@ -86,7 +68,7 @@ export class MonoKeys extends LitElement {
   }
 
   override render(): TemplateResult {
-    return html`${WHITE_KEYS.map(
+    return html`${LAYOUT.white.map(
       (key) =>
         html`<div
           class=${classMap({ wk: true, p: this.pressed.has(key.semitone) })}
@@ -95,12 +77,13 @@ export class MonoKeys extends LitElement {
         >
           ${key.label}
         </div>`,
-    )}${BLACK_KEYS.map(
+    )}${LAYOUT.black.map(
       (key) =>
         html`<div
           class=${classMap({ bk: true, p: this.pressed.has(key.semitone) })}
           data-semitone=${key.semitone}
-          style="left:${(key.after + 1) * 10}%"
+          data-note=${key.label}
+          style="left:${(key.after + 1) * WHITE_WIDTH}%"
           @pointerdown=${this.onPointerDown}
         ></div>`,
     )}`;

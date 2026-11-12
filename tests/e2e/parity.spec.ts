@@ -13,7 +13,8 @@ const PROTOTYPE_URL = '/reference/prototype/mono.html';
 /**
  * Deliberate differences from the prototype, approved after stage 1. They are
  * applied to the prototype page before its screenshots, so the comparison still
- * covers everything else in the states they touch.
+ * covers everything else in the states they touch. Style-only ones go in
+ * APPROVED_DEVIATIONS; ones that change markup go in PROTOTYPE_PATCHES.
  */
 const APPROVED_DEVIATIONS = `
   /* 1. Active sequencer steps: only the LED takes the node colour, on every beat.
@@ -27,6 +28,29 @@ const APPROVED_DEVIATIONS = `
         In the prototype it showed through between the chips. Affects menu-open. */
   #stage:has(#menu .chip) #hint { display: none !important; }
 `;
+
+/**
+ * 3. The LEAD keyboard starts on C instead of E: white keys C D E F G A B C D E,
+ *    black keys between C-D, D-E, F-G, G-A and A-B. Requested before stage 2.
+ *    The prototype's keys are rebuilt with its own markup (black key centred on
+ *    the edge of white key i: left = (i + 1) * 10%). Affects panel-lead.
+ */
+const LEAD_FROM_C = {
+  white: ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C', 'D', 'E'],
+  blackAfter: [0, 1, 3, 4, 5, 7, 8],
+};
+
+/** Applied to the prototype right before the screenshot of the named state. */
+const PROTOTYPE_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  'panel-lead': (page) =>
+    page.evaluate(({ white, blackAfter }) => {
+      const keys = document.querySelector('.keys');
+      if (!keys) throw new Error('prototype keyboard not found');
+      keys.innerHTML =
+        white.map((label) => `<div class="wk">${label}</div>`).join('') +
+        blackAfter.map((i) => `<div class="bk" style="left:${(i + 1) * 10}%"></div>`).join('');
+    }, LEAD_FROM_C),
+};
 const NODE_ORDER = ['synth', 'drum', 'bass', 'drone', 'dist', 'lfo', 'lead'] as const;
 const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 720 },
@@ -53,6 +77,7 @@ async function settle(page: Page): Promise<void> {
 async function walk(page: Page, url: string): Promise<Map<string, Buffer>> {
   const shots = new Map<string, Buffer>();
   const shoot = async (name: string): Promise<void> => {
+    if (url === PROTOTYPE_URL) await PROTOTYPE_PATCHES[name]?.(page);
     await settle(page);
     shots.set(name, await page.screenshot());
   };
