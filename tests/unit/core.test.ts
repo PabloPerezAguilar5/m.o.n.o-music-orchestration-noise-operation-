@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pulsesAt } from '../../src/core/activity';
+import { DEFAULT_BASS_PATTERN, gridFromBassPattern } from '../../src/core/bass-patterns';
 import { clampNodePosition, DEFAULT_POSITIONS, MASTER_POSITION } from '../../src/core/geometry';
 import { INSTRUMENT_IDS, isSequenced, NODE_IDS, NODE_SPECS, type NodeId } from '../../src/core/nodes';
 import { DEFAULT_PATTERNS, hasHitAt, STEPS, toggleStep } from '../../src/core/patterns';
@@ -23,10 +24,12 @@ describe('nodes', () => {
 
 describe('patterns', () => {
   it('ships 16-step defaults matching each node spec', () => {
-    for (const id of ['synth', 'drum', 'bass'] as const) {
+    for (const id of ['synth', 'drum'] as const) {
       expect(DEFAULT_PATTERNS[id]).toHaveLength(NODE_SPECS[id].rows.length);
       for (const row of DEFAULT_PATTERNS[id]) expect(row).toHaveLength(STEPS);
     }
+    // BASS has its own pattern type; its grid view has one row per spec row.
+    expect(gridFromBassPattern(DEFAULT_BASS_PATTERN)).toHaveLength(NODE_SPECS.bass.rows.length);
   });
 
   it('toggles one step without mutating the original', () => {
@@ -39,7 +42,7 @@ describe('patterns', () => {
   });
 
   it('ignores coordinates outside the pattern', () => {
-    const pattern = DEFAULT_PATTERNS.bass;
+    const pattern = DEFAULT_PATTERNS.synth;
     expect(toggleStep(pattern, 9, 0)).toBe(pattern);
     expect(toggleStep(pattern, 0, 16)).toBe(pattern);
     expect(toggleStep(pattern, 0, -1)).toBe(pattern);
@@ -96,15 +99,17 @@ describe('activity', () => {
   const ids = (step: number, sounding: NodeId[] = []) =>
     pulsesAt(step, DEFAULT_PATTERNS, sounding).map((pulse) => pulse.id);
 
-  it('lights the simulated nodes only where their pattern has a hit', () => {
-    expect(ids(0)).toEqual(expect.arrayContaining(['synth', 'bass']));
+  it('lights the simulated SYNTH only where its pattern has a hit', () => {
+    expect(ids(0)).toContain('synth');
     expect(ids(1)).toEqual([]);
-    expect(ids(3)).toEqual(['bass']);
+    expect(ids(3)).toEqual([]);
   });
 
-  it('lights DRUM only when the audio engine says it sounded', () => {
+  it('lights DRUM and BASS only when the audio engine says they sounded', () => {
     expect(ids(0)).not.toContain('drum');
+    expect(ids(0)).not.toContain('bass');
     expect(ids(1, ['drum'])).toEqual(['drum']);
+    expect(ids(1, ['bass'])).toEqual(['bass']);
   });
 
   it('lights master, distortion and drone on each beat and lfo every other step', () => {

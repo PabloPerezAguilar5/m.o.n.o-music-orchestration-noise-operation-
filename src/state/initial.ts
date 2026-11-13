@@ -1,4 +1,5 @@
 import { INITIAL_AUDIO_STATUS } from '../core/audio-scene';
+import { DEFAULT_BASS_PATTERN } from '../core/bass-patterns';
 import { INITIAL_SEED, patternFromGrid } from '../core/drum-patterns';
 import { DEFAULT_POSITIONS } from '../core/geometry';
 import {
@@ -27,6 +28,15 @@ const defaultParams = (id: NodeId): ParamValues => {
   return values;
 };
 
+/** BASS knobs start where the voice sounds like a classic 303 line. */
+const defaultBassParams = (): ParamValues => ({
+  cutoff: 0.45,
+  resonance: 0.55,
+  decay: 0.45,
+  drive: 0.3,
+  [MACRO_PARAM]: MACRO_DEFAULT,
+});
+
 /** DRUM knobs are real controls: tone centred (original pitch), volume at unity. */
 const defaultDrumParams = (): ParamValues => {
   const values: Record<string, number> = { [MACRO_PARAM]: MACRO_DEFAULT };
@@ -43,12 +53,13 @@ export function createInitialState(): AppState {
     ParamValues
   >;
   params.drum = defaultDrumParams();
+  params.bass = defaultBassParams();
   return {
     added: ['master'],
     selected: 'master',
     positions: DEFAULT_POSITIONS,
     params,
-    patterns: { synth: DEFAULT_PATTERNS.synth, bass: DEFAULT_PATTERNS.bass },
+    patterns: { synth: DEFAULT_PATTERNS.synth },
     // Starts with the prototype's pattern; the first press of RNDM replaces it.
     drum: {
       kit: INITIAL_KIT,
@@ -56,6 +67,18 @@ export function createInitialState(): AppState {
       generation: 0,
       pattern: patternFromGrid(DEFAULT_PATTERNS.drum),
     },
+    // Starts with the prototype's steps; DICE replaces it.
+    bass: {
+      seed: INITIAL_SEED,
+      generation: 0,
+      mode: 'pulse',
+      root: 0,
+      scale: 'pentaMinor',
+      pattern: DEFAULT_BASS_PATTERN,
+      wave: 'saw',
+      sub: false,
+    },
+    unplugged: [],
     drone: { x: 0.5, y: 0.5 },
     distType: 'soft',
     transport: { playing: false, bpm: BPM_DEFAULT, step: -1 },

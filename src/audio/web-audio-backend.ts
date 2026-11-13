@@ -5,6 +5,9 @@ import {
   type AudioScene,
   type AudioStatus,
 } from '../core/audio-scene';
+import { BassSequencer, type BassMode, type BassPattern } from '../core/bass-patterns';
+import { bassMidi, type ScaleId } from '../core/bass-scales';
+import { BASS_VOICES } from '../core/bass-voices';
 import { pickVariant } from '../core/drum-kits';
 import type { DrumPattern } from '../core/drum-patterns';
 import { clickAt } from '../core/metronome';
@@ -12,6 +15,7 @@ import { DRUM_ROWS, type NodeId } from '../core/nodes';
 import { LookaheadScheduler, type ScheduledStep } from '../core/scheduler';
 import { startTicker, type AudioTicker } from './audio-clock';
 import type { AudioBackend, StatusListener, StepEvent, StepListener } from './backend';
+import { BassModule, bassParamsFromScene, loadBassProcessor } from './bass/bass-module';
 import { DrumModule, type LoadedKit } from './drum-module';
 import { AudioGraph } from './graph';
 import { MasterBus } from './master';
@@ -30,6 +34,7 @@ const AUDITION_VELOCITY = 0.9;
 
 const MASTER = 'master';
 const DRUM: NodeId = 'drum';
+const BASS: NodeId = 'bass';
 
 /** What is sounding right now; it catches up with the latest scene as allowed. */
 interface Applied {
@@ -38,6 +43,18 @@ interface Applied {
   generation: number;
   pattern: DrumPattern;
 }
+
+/** The BASS line sounding now. Key, scale and mode change with a new pattern, at the bar. */
+interface AppliedBass {
+  generation: number;
+  pattern: BassPattern;
+  root: number;
+  scale: ScaleId;
+  mode: BassMode;
+}
+
+/** Where the BASS processor stands in this context. */
+type BassLoad = 'loading' | 'ready' | 'failed';
 
 interface PendingVisual {
   readonly time: number;
@@ -51,9 +68,9 @@ interface PendingVisual {
  * an AudioWorklet. Each step is scheduled with its exact time, and its visual event is
  * delivered when that time is heard (output latency included).
  *
- * Applies at once: tempo, levels, row volume and tone, hand edits of the pattern.
- * Waits for the next bar while playing: adding or removing nodes and cables, changing
- * kit, a regenerated pattern.
+ * Applies at once: tempo, levels, row volume and tone, BASS knobs, wave and sub, hand
+ * edits of a pattern. Waits for the next bar while playing: adding or removing nodes,
+ * cutting or plugging cables, changing kit, a regenerated pattern, BASS key and scale.
  */
 export class WebAudioBackend implements AudioBackend {
   private context: AudioContext | null = null;
@@ -61,6 +78,10 @@ export class WebAudioBackend implements AudioBackend {
   private graph: AudioGraph | null = null;
   private master: MasterBus | null = null;
   private drum: DrumModule | null = null;
+  private bass: BassModule | null = null;
+  private bassLoad: BassLoad = 'loading';
+  private appliedBass: AppliedBass | null = null;
+  private readonly bassSequencer = new BassSequencer();
   private metronome: MetronomeVoice | null = null;
   /** Kit waiting to be heard (its samples may still be loading). */
   private pendingAudition: string | null = null;
@@ -124,6 +145,8 @@ export class WebAudioBackend implements AudioBackend {
     // Changes waiting for a bar that will not come apply now.
     this.scheduler.stop(now);
     this.drum?.cancelAfter(now);
+    this.bass?.flush(now);
+    this.bassSequencer.reset();
     this.metronome?.cancelAfter(now);
   }
 
@@ -167,6 +190,16 @@ export class WebAudioBackend implements AudioBackend {
       (manifest) => this.setStatus({ kits: manifest.kits.map((kit) => kit.id) }),
       () => this.reportMissing('*', [MANIFEST_FILE]),
     );
+    void loadBassProcessor(context).then(
+      () => {
+        this.bassLoad = 'ready';
+        if (this.initialized && this.scene) this.apply(this.scene);
+      },
+      (error: unknown) => {
+        this.bassLoad = 'failed';
+        console.warn('M.O.N.O.: no se pudo cargar la voz del BASS; queda en silencio.', error);
+      },
+    );
 
     this.ticker = await startTicker(context, this.pump, TICK_QUANTA);
     this.initialized = true;
@@ -207,8 +240,10 @@ export class WebAudioBackend implements AudioBackend {
     this.scheduler.setBpm(scene.bpm);
     this.master!.setVolume(masterGain(scene.master.volume), now);
     this.master!.setChannelLevel(DRUM, channelGain(scene.master.drumLevel), now);
+    this.master!.setChannelLevel(BASS, channelGain(scene.master.bassLevel), now);
     this.metronome!.setVolume(scene.metronome.volume, now);
     for (const row of DRUM_ROWS) this.drum?.setRow(row, scene.drum.rows[row], now);
+    this.bass?.setParams(bassParamsFromScene(scene.bass));
 
     if (!this.applied) {
       this.applied = { kit: null, seed: scene.drum.seed, generation: scene.drum.generation, pattern: scene.drum.pattern };
@@ -216,17 +251,38 @@ export class WebAudioBackend implements AudioBackend {
       // A hand edit: sounds from the next step.
       this.applied.pattern = scene.drum.pattern;
     }
+    if (!this.appliedBass) {
+      const { generation, pattern, root, scale, mode } = scene.bass;
+      this.appliedBass = { generation, pattern, root, scale, mode };
+    } else if (scene.bass.generation === this.appliedBass.generation) {
+      this.appliedBass.pattern = scene.bass.pattern;
+    }
 
     if (this.structuralChange(scene)) this.queueStructural();
   }
 
   private structuralChange(scene: AudioScene): boolean {
     const applied = this.applied!;
-    const wantDrum = scene.nodes.includes(DRUM);
+    const bass = this.appliedBass!;
+    const graph = this.graph!;
     const kit = scene.drum.kit;
     // A new kit counts once it has loaded, or when it still has to be requested.
     const kitChange = kit !== applied.kit && (this.kits.has(kit) || !this.kitRequests.has(kit));
-    return wantDrum !== this.graph!.has(DRUM) || scene.drum.generation !== applied.generation || kitChange;
+    // BASS can only join once its processor is loaded.
+    const bassNode = scene.nodes.includes(BASS) && this.bassLoad === 'ready';
+    const bassChange =
+      scene.bass.generation !== bass.generation || scene.bass.root !== bass.root || scene.bass.scale !== bass.scale;
+    const cableChange = [DRUM, BASS].some(
+      (id) => graph.has(id) && scene.cables.includes(id) !== graph.isConnected(id, MASTER),
+    );
+    return (
+      scene.nodes.includes(DRUM) !== graph.has(DRUM) ||
+      bassNode !== graph.has(BASS) ||
+      scene.drum.generation !== applied.generation ||
+      kitChange ||
+      bassChange ||
+      cableChange
+    );
   }
 
   /** Applies structural changes at the next bar, or now when stopped. Reads the latest scene then. */
@@ -262,18 +318,48 @@ export class WebAudioBackend implements AudioBackend {
     applied.seed = scene.drum.seed;
     applied.pattern = scene.drum.pattern;
 
-    // Nodes and cables.
+    // BASS line: new pattern, key, scale and mode together.
+    const { generation, pattern, root, scale, mode } = scene.bass;
+    this.appliedBass = { generation, pattern, root, scale, mode };
+
+    // Nodes.
     const wantDrum = scene.nodes.includes(DRUM);
     if (wantDrum && !graph.has(DRUM)) {
       const drum = new DrumModule(this.context!);
       for (const row of DRUM_ROWS) drum.setRow(row, scene.drum.rows[row], time);
       drum.setKit(applied.kit ? (this.kits.get(applied.kit) ?? null) : null);
       graph.add(DRUM, drum);
-      graph.connect(DRUM, MASTER, time);
       this.drum = drum;
     } else if (!wantDrum && graph.has(DRUM)) {
       graph.remove(DRUM, time);
       this.drum = null;
+    }
+    const wantBass = scene.nodes.includes(BASS) && this.bassLoad === 'ready';
+    if (wantBass && !graph.has(BASS)) {
+      const bass = new BassModule(this.context!);
+      bass.setParams(bassParamsFromScene(scene.bass));
+      graph.add(BASS, bass);
+      this.bass = bass;
+    } else if (!wantBass && graph.has(BASS)) {
+      this.bass?.flush(time);
+      this.bassSequencer.reset();
+      graph.remove(BASS, time);
+      this.bass = null;
+    }
+
+    // Cables: each live connection is made or cut here, with a short fade.
+    for (const id of [DRUM, BASS]) {
+      if (!graph.has(id)) continue;
+      const want = scene.cables.includes(id);
+      if (want && !graph.isConnected(id, MASTER)) {
+        graph.connect(id, MASTER, time);
+      } else if (!want && graph.isConnected(id, MASTER)) {
+        graph.disconnect(id, MASTER, time);
+        if (id === BASS) {
+          this.bass?.flush(time);
+          this.bassSequencer.reset();
+        }
+      }
     }
   }
 
@@ -338,6 +424,20 @@ export class WebAudioBackend implements AudioBackend {
         }
       });
       if (hit) sounding.push(DRUM);
+    }
+    const bass = this.bass;
+    const line = this.appliedBass;
+    if (bass && line && this.graph?.isConnected(BASS, MASTER)) {
+      const events = this.bassSequencer.step(
+        line.pattern,
+        step,
+        time,
+        duration,
+        (degree) => bassMidi(line.root, line.scale, degree),
+        BASS_VOICES[line.mode].gate,
+      );
+      bass.schedule(events);
+      if (events.some((event) => event.type === 'on')) sounding.push(BASS);
     }
     if (this.listener) this.visuals.push({ time, event: { step, sounding } });
   }

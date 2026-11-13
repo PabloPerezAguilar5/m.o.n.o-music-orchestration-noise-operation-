@@ -386,3 +386,100 @@ test('la palabra semilla no aparece en la interfaz', async ({ page }) => {
   expect(texts).toContain('RNDM');
   expect(texts).not.toMatch(/semilla|seed/i);
 });
+
+/** Clicks the middle of a node's cable (its tap target is an invisible wide line). */
+async function clickCable(page: Page, id: string): Promise<void> {
+  const box = await page.locator(`#cb-${id}`).evaluate((line) => {
+    const r = line.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.click(box.x, box.y);
+}
+
+async function addBass(page: Page): Promise<void> {
+  await page.click('#add');
+  await page.click('.chip[data-id="bass"]');
+}
+
+test.describe('BASS', () => {
+  test('suena con su voz 303, se enciende con el reloj y el cable se corta y reconecta en vivo', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addBass(page);
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+
+    // Sound through the master, the playhead moving and the node lighting up on its notes.
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    const column = () => page.locator('.st.ph').first().getAttribute('data-c');
+    const first = await column();
+    await expect.poll(column).not.toBe(first);
+    await expect(page.locator('#nd-bass.on')).toHaveCount(1, { timeout: 2000 });
+
+    // Cut the cable: drawn as cut at once, silent from the next bar.
+    await clickCable(page, 'bass');
+    await expect(page.locator('#cb-bass')).toHaveClass(/\boff\b/);
+    await page.waitForTimeout(2300); // up to one bar at 120 bpm, plus the release
+    expect(await peakLevel(page)).toBeLessThan(0.001);
+    await expect(page.locator('#nd-bass.on')).toHaveCount(0);
+
+    // Plug it back: sound again from the next bar, without stopping playback.
+    await clickCable(page, 'bass');
+    await expect(page.locator('#cb-bass')).not.toHaveClass(/\boff\b/);
+    await page.waitForTimeout(2100);
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await expect(page.locator('#play')).toHaveClass(/on/);
+    expect(errors).toEqual([]);
+  });
+
+  test('panel: DICE, modos, tónica, escala, onda, sub y pasos', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addBass(page);
+    const lcd = page.locator('#lcd');
+    await expect(lcd).toHaveText('BASS · C PENTA MENOR');
+    await expect(page.locator('mono-step-grid .st')).toHaveCount(7 * 16);
+
+    // DICE: a new pattern each time.
+    let previous = await gridOf(page);
+    for (let press = 0; press < 3; press++) {
+      await page.click('#dice');
+      const next = await gridOf(page);
+      expect(next, `press ${press + 1}`).not.toBe(previous);
+      previous = next;
+    }
+
+    // Modes: one LED on; a mode changes the pattern.
+    await expect(page.locator('[data-mode]')).toHaveText(['PULSE', 'BROKEN', 'DIRTY', 'DRONE', 'CHAOS']);
+    await expect(page.locator('[data-mode].on')).toHaveAttribute('data-mode', 'pulse');
+    await page.click('[data-mode="drone"]');
+    await expect(page.locator('[data-mode].on')).toHaveAttribute('data-mode', 'drone');
+    await expect(lcd).toHaveText('BASS MODO DRONE');
+
+    // Key: tonic and scale step, and the note rows follow.
+    await page.click('[data-root="1"]');
+    await expect(page.locator('#root')).toHaveText('C#');
+    await expect(lcd).toHaveText('BASS TÓNICA C#');
+    await page.click('[data-scale="1"]');
+    await expect(page.locator('#scale')).toHaveText('MENOR');
+    const captions = await page.locator('mono-step-grid .sq > span:not(.nm)').allTextContents();
+    // C# minor: C# Eb E Ab B (spelled as fck-synth does), highest on top.
+    expect(captions.filter(Boolean)).toEqual(['B', 'Ab', 'E', 'Eb', 'C#', 'SLD', 'ACC']);
+
+    // Wave and sub.
+    await expect(page.locator('#wave')).toHaveText('SIERRA');
+    await page.click('#wave');
+    await expect(page.locator('#wave')).toHaveText('CUADRADA');
+    await page.click('#sub');
+    await expect(page.locator('#sub')).toHaveAttribute('aria-pressed', 'true');
+
+    // A note step: tap a degree, then tap it again for a rest.
+    const cell = page.locator('.st[data-r="0"][data-c="1"]');
+    await cell.click();
+    await expect(cell).toHaveClass(/\ba\b/);
+    await cell.click();
+    await expect(cell).not.toHaveClass(/\ba\b/);
+
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    expect(errors).toEqual([]);
+  });
+});

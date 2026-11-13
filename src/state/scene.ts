@@ -12,10 +12,30 @@ export function sceneFromState(state: AppState): AudioScene {
       { volume: drum[drumVolumeParam(row)] ?? 0, tone: drum[drumToneParam(row)] ?? 0.5 },
     ]),
   ) as Record<DrumRow, { volume: number; tone: number }>;
+  const bassKnobs = state.params.bass;
+  const { bass } = state;
   return {
     bpm: state.transport.bpm,
     nodes: state.added,
-    master: { volume: master.volume ?? 0, drumLevel: master.drumLevel ?? 0 },
+    cables: state.added.filter((id) => id !== 'master' && !state.unplugged.includes(id)),
+    master: {
+      volume: master.volume ?? 0,
+      drumLevel: master.drumLevel ?? 0,
+      bassLevel: master.bassLevel ?? 0,
+    },
+    bass: {
+      generation: bass.generation,
+      pattern: bass.pattern,
+      mode: bass.mode,
+      root: bass.root,
+      scale: bass.scale,
+      cutoff: bassKnobs.cutoff ?? 0,
+      resonance: bassKnobs.resonance ?? 0,
+      decay: bassKnobs.decay ?? 0,
+      drive: bassKnobs.drive ?? 0,
+      wave: bass.wave,
+      sub: bass.sub,
+    },
     drum: {
       kit: state.drum.kit,
       seed: state.drum.seed,

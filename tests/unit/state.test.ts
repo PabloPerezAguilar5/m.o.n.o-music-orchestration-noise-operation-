@@ -95,9 +95,30 @@ describe('Store', () => {
   });
 
   it('toggles pattern steps', () => {
-    expect(store.getState().patterns.bass[0]?.[1]).toBe(false);
-    store.toggleStep('bass', 0, 1);
-    expect(store.getState().patterns.bass[0]?.[1]).toBe(true);
+    expect(store.getState().patterns.synth[0]?.[1]).toBe(false);
+    store.toggleStep('synth', 0, 1);
+    expect(store.getState().patterns.synth[0]?.[1]).toBe(true);
+  });
+
+  describe('cables', () => {
+    it('cuts and plugs back a node cable; MASTER has none', () => {
+      store.addNode('bass');
+      store.toggleCable('bass');
+      expect(store.getState().unplugged).toEqual(['bass']);
+      store.toggleCable('bass');
+      expect(store.getState().unplugged).toEqual([]);
+      store.toggleCable('master');
+      store.toggleCable('drum'); // not on the canvas
+      expect(store.getState().unplugged).toEqual([]);
+    });
+
+    it('a removed node comes back plugged in', () => {
+      store.addNode('bass');
+      store.toggleCable('bass');
+      store.removeNode('bass');
+      store.addNode('bass');
+      expect(store.getState().unplugged).toEqual([]);
+    });
   });
 
   describe('DRUM', () => {

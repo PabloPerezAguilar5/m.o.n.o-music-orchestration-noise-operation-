@@ -1,4 +1,11 @@
 import type { AudioStatus } from '../core/audio-scene';
+import {
+  generateBassPattern,
+  sameBassGrid,
+  toggleBassCell,
+  type BassMode,
+} from '../core/bass-patterns';
+import { SCALE_IDS } from '../core/bass-scales';
 import { generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
 import { MACRO_PARAM, type DistType, type GridPatternId, type NodeId } from '../core/nodes';
@@ -46,10 +53,21 @@ export class Store extends Emitter implements Source<AppState> {
   /** Removes a node (never MASTER). Selection falls back to MASTER if it was selected. */
   removeNode(id: NodeId): void {
     if (id === 'master' || !this.has(id)) return;
-    const { added, selected } = this.state;
+    const { added, selected, unplugged } = this.state;
     this.update({
       added: added.filter((other) => other !== id),
       selected: selected === id ? 'master' : selected,
+      // A node added again comes back plugged in.
+      unplugged: unplugged.filter((other) => other !== id),
+    });
+  }
+
+  /** Cuts a node's cable to MASTER, or plugs it back. MASTER has no cable. */
+  toggleCable(id: NodeId): void {
+    if (id === 'master' || !this.has(id)) return;
+    const { unplugged } = this.state;
+    this.update({
+      unplugged: unplugged.includes(id) ? unplugged.filter((other) => other !== id) : [...unplugged, id],
     });
   }
 
@@ -64,7 +82,7 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ positions: { ...this.state.positions, [id]: clampNodePosition(point) } });
   }
 
-  /** Sets a knob. On DRUM, CAOS regenerates the pattern from the current seed. */
+  /** Sets a knob. On DRUM and BASS, CAOS regenerates the pattern from the current seed. */
   setParam(id: NodeId, param: string, value: number): void {
     const current = this.state.params[id];
     if (!(param in current)) return;
@@ -73,6 +91,9 @@ export class Store extends Emitter implements Source<AppState> {
     const params = { ...this.state.params, [id]: { ...current, [param]: next } };
     if (id === 'drum' && param === MACRO_PARAM) {
       this.update({ params, drum: this.regenerated(this.state.drum.seed, next) });
+    } else if (id === 'bass' && param === MACRO_PARAM) {
+      const { bass } = this.state;
+      this.update({ params, bass: this.regeneratedBass(bass.mode, bass.seed, next) });
     } else {
       this.update({ params });
     }
@@ -105,6 +126,72 @@ export class Store extends Emitter implements Source<AppState> {
       drum = this.regenerated(nextSeed() >>> 0, chaos);
     }
     this.update({ drum });
+  }
+
+  // BASS ----------------------------------------------------------------------------------------
+
+  /** Hand edit of the BASS grid (note, SLD or ACC). Keeps the generation: it sounds from the next step. */
+  toggleBassStep(row: number, col: number): void {
+    const { bass } = this.state;
+    const pattern = toggleBassCell(bass.pattern, row, col);
+    if (pattern === bass.pattern) return;
+    this.update({ bass: { ...bass, pattern } });
+  }
+
+  /**
+   * DICE: a pattern in the current mode from a new seed, at the current CAOS. Always
+   * different on the grid from the one playing.
+   */
+  randomizeBass(nextSeed: () => number): void {
+    const { bass } = this.state;
+    const chaos = this.state.params.bass[MACRO_PARAM] ?? 0;
+    let next = this.regeneratedBass(bass.mode, nextSeed() >>> 0, chaos);
+    for (let attempt = 1; attempt < RANDOMIZE_ATTEMPTS && sameBassGrid(next.pattern, bass.pattern); attempt++) {
+      next = this.regeneratedBass(bass.mode, nextSeed() >>> 0, chaos);
+    }
+    this.update({ bass: next });
+  }
+
+  /** Picks a mode: its voice character, and a pattern in that mode from the current seed. */
+  setBassMode(mode: BassMode): void {
+    const { bass } = this.state;
+    if (bass.mode === mode) return;
+    this.update({ bass: this.regeneratedBass(mode, bass.seed, this.state.params.bass[MACRO_PARAM] ?? 0) });
+  }
+
+  /** Steps the tonic up or down a semitone, wrapping around the octave. */
+  nudgeBassRoot(direction: 1 | -1): void {
+    const { bass } = this.state;
+    this.update({ bass: { ...bass, root: (bass.root + direction + 12) % 12 } });
+  }
+
+  /** Steps through the scales, wrapping around. */
+  nudgeBassScale(direction: 1 | -1): void {
+    const { bass } = this.state;
+    const index = SCALE_IDS.indexOf(bass.scale);
+    const scale = SCALE_IDS[(index + direction + SCALE_IDS.length) % SCALE_IDS.length]!;
+    this.update({ bass: { ...bass, scale } });
+  }
+
+  toggleBassWave(): void {
+    const { bass } = this.state;
+    this.update({ bass: { ...bass, wave: bass.wave === 'saw' ? 'square' : 'saw' } });
+  }
+
+  toggleBassSub(): void {
+    const { bass } = this.state;
+    this.update({ bass: { ...bass, sub: !bass.sub } });
+  }
+
+  private regeneratedBass(mode: BassMode, seed: number, chaos: number): AppState['bass'] {
+    const { bass } = this.state;
+    return {
+      ...bass,
+      mode,
+      seed,
+      generation: bass.generation + 1,
+      pattern: generateBassPattern(mode, seed, chaos),
+    };
   }
 
   /** Picks a kit from the manifest. No-op for a kit the manifest does not list. */

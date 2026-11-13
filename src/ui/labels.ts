@@ -1,3 +1,5 @@
+import type { BassMode } from '../core/bass-patterns';
+import { DEGREES, degreeName, type ScaleId } from '../core/bass-scales';
 import type { DistType, NodeId } from '../core/nodes';
 
 /** Interface texts (Spanish). */
@@ -36,16 +38,40 @@ export const KNOB_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   lead: ['ONDA', 'CUTOFF', 'RESO', 'ATAQUE', 'RELEASE', 'DETUNE'],
 };
 
-/** Sequencer row captions, in the same order as NODE_SPECS[id].rows. */
+/**
+ * Sequencer row captions, in the same order as NODE_SPECS[id].rows. BASS names its
+ * five note rows after the key (bassRowLabels); these are its last two.
+ */
 export const ROW_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   master: [],
   synth: ['NOTA', 'OCT', 'ACC'],
   drum: ['KCK', 'SNR', 'HAT', 'PRC'],
-  bass: ['NOTA', 'SLD', 'ACC'],
+  bass: ['SLD', 'ACC'],
   drone: [],
   dist: [],
   lfo: [],
   lead: [],
+};
+
+/** BASS grid captions: the five notes of the key (highest on top), then SLD and ACC. */
+export const bassRowLabels = (root: number, scale: ScaleId): string[] => [
+  ...Array.from({ length: DEGREES }, (_, row) => degreeName(root, scale, DEGREES - 1 - row)),
+  ...ROW_LABELS.bass,
+];
+
+export const SCALE_LABELS: Readonly<Record<ScaleId, string>> = {
+  pentaMinor: 'PENTA MENOR',
+  minor: 'MENOR',
+  major: 'MAYOR',
+  dorian: 'DÓRICA',
+};
+
+export const BASS_MODE_LABELS: Readonly<Record<BassMode, string>> = {
+  pulse: 'PULSE',
+  broken: 'BROKEN',
+  dirty: 'DIRTY',
+  drone: 'DRONE',
+  chaos: 'CHAOS',
 };
 
 /** Headers of knob groups (NODE_SPECS[id].sections). */
@@ -98,6 +124,23 @@ export const TEXT = {
   click: 'CLICK',
   clickHint: 'Metrónomo: prender o apagar',
   clickVolume: 'VOL',
+  oscSection: 'OSC',
+  waves: { saw: 'SIERRA', square: 'CUADRADA' },
+  waveHint: 'Forma de onda: sierra o cuadrada',
+  sub: 'SUB',
+  subHint: 'Sub: una octava más abajo',
+  keySection: 'ESCALA',
+  root: 'TÓNICA',
+  rootDown: 'Bajar la tónica',
+  rootUp: 'Subir la tónica',
+  scale: 'ESCALA',
+  scaleDown: 'Escala anterior',
+  scaleUp: 'Escala siguiente',
+  modeSection: 'MODO',
+  modeHint: 'Modo',
+  dice: 'DICE',
+  diceHint: 'Patrón nuevo al azar en este modo',
+  cableHint: 'Cortar o reconectar el cable',
   missing: 'FALTA',
   audioBlocked: 'AUDIO BLOQUEADO · TOCÁ ▶',
   audioUnavailable: 'SIN AUDIO EN ESTE NAVEGADOR',

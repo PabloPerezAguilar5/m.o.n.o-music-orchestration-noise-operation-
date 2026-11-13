@@ -102,6 +102,36 @@ describe('linkAudio (store ↔ backend)', () => {
     expect(backend.clicks).toEqual([]);
   });
 
+  it('BASS plays its notes on the shared clock and lights up when it sounds', () => {
+    store.addNode('bass');
+    for (let ms = 0; ms <= 950; ms += 50) backend.advanceTo(ms / 1000);
+    // Steps 0..7 of the default line: notes on 0, 3 and 6 (accent on 0).
+    const ons = backend.bassEvents.filter((event) => event.type === 'on');
+    expect(ons.map((event) => event.time)).toEqual([0, 0.375, 0.75]);
+    expect(ons[0]).toMatchObject({ midi: 36, accent: true, legato: false });
+    expect(pulses.filter((p) => p.id === 'bass')).toHaveLength(3);
+  });
+
+  it('a cut BASS cable silences it and leaves it dark; plugging it back resumes', () => {
+    store.addNode('bass');
+    store.toggleCable('bass');
+    expect(backend.scenes.at(-1)!.cables).toEqual([]);
+    for (let ms = 0; ms <= 1000; ms += 50) backend.advanceTo(ms / 1000);
+    expect(backend.bassEvents).toEqual([]);
+    expect(pulses.some((p) => p.id === 'bass')).toBe(false);
+    store.toggleCable('bass');
+    expect(backend.scenes.at(-1)!.cables).toEqual(['bass']);
+    for (let ms = 1050; ms <= 2000; ms += 50) backend.advanceTo(ms / 1000);
+    expect(backend.bassEvents.some((event) => event.type === 'on')).toBe(true);
+  });
+
+  it('forwards BASS key, knobs and keys as scenes', () => {
+    store.nudgeBassRoot(1);
+    store.setParam('bass', 'cutoff', 0.8);
+    store.toggleBassSub();
+    expect(backend.scenes.at(-1)!.bass).toMatchObject({ root: 1, cutoff: 0.8, sub: true });
+  });
+
   it('passes kit auditions to the backend', () => {
     const fresh = new Store();
     const silent = new SilentBackend();

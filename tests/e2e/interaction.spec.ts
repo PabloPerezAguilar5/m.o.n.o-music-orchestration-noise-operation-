@@ -125,7 +125,7 @@ test.describe('lienzo', () => {
     await expect(page.locator('.chip')).toHaveCount(0);
     await expect(page.locator('#lcd')).toHaveText('MASTER · MST-00');
     await page.click('#nd-bass');
-    await expect(page.locator('#lcd')).toHaveText('BASS · BAS-03');
+    await expect(page.locator('#lcd')).toHaveText('BASS · C PENTA MENOR'); // BASS shows its key
   });
 
   test('el boton de reproduccion arranca y detiene', async ({ page }) => {

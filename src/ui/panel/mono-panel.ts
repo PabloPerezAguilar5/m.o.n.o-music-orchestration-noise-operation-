@@ -1,6 +1,8 @@
 import { css, html, LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
+import { BASS_MODES, gridFromBassPattern, type BassMode, type BassPattern } from '../../core/bass-patterns';
+import { ROOTS } from '../../core/bass-scales';
 import { kitLabel } from '../../core/drum-kits';
 import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
 import { clickAt } from '../../core/metronome';
@@ -8,7 +10,18 @@ import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } 
 import type { Pattern } from '../../core/patterns';
 import { randomSeed } from '../../core/random';
 import { cues, pulse, store } from '../../state';
-import { KIT_ORDER, KNOB_LABELS, NODE_CODES, NODE_NAMES, ROW_LABELS, SECTION_LABELS, TEXT } from '../labels';
+import {
+  BASS_MODE_LABELS,
+  bassRowLabels,
+  KIT_ORDER,
+  KNOB_LABELS,
+  NODE_CODES,
+  NODE_NAMES,
+  ROW_LABELS,
+  SCALE_LABELS,
+  SECTION_LABELS,
+  TEXT,
+} from '../labels';
 import { Selector } from '../store-controller';
 import { hardwareKey, reset } from '../styles/shared';
 import { NODE_COLORS } from '../theme';
@@ -222,13 +235,70 @@ export class MonoPanel extends LitElement {
           0 0 4px var(--c),
           0 0 12px var(--c);
       }
-      .kits {
+      .kits,
+      .modes {
         gap: clamp(4px, 0.8vw, 8px);
+      }
+      /* Two controls stacked in the height of a knob and its caption (BASS: OSC, ESCALA). */
+      .stack {
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: stretch;
+        gap: 4px;
+        height: calc(var(--ks) + 14px);
+        box-sizing: content-box;
+      }
+      .stack > * {
+        flex: 1;
+        min-height: 0;
+      }
+      .stack .pk {
+        height: auto;
+        min-width: 0;
+        font-size: 8px;
+      }
+      .stack .pk.led {
+        padding-top: 5px;
+      }
+      .stack .pk.led::before {
+        top: 3px;
+        height: 2px;
+      }
+      /* − value + : a small display between two keys. */
+      .stp {
+        display: flex;
+        gap: 3px;
+      }
+      .stp .pk {
+        padding: 0;
+        width: 26px;
+        font-size: 12px;
+      }
+      .mini {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 7ch;
+        padding: 0 6px;
+        background: #0d0508;
+        border: 1px solid #000;
+        border-radius: 3px;
+        box-shadow: inset 0 0 6px #000;
+        color: var(--c);
+        text-shadow: 0 0 6px var(--c);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        white-space: nowrap;
+      }
+      .stp.wide .mini {
+        min-width: 12ch;
       }
       /* Narrow screens: eight kits do not fit in one row, so they go in two rows of
          four, each at least 26px tall for a finger (the knob row grows a little). */
       @media (max-width: 1100px) {
-        .kits {
+        .kits,
+        .modes {
           display: grid;
           grid-template-columns: repeat(4, auto);
           grid-auto-rows: minmax(26px, 1fr);
@@ -236,13 +306,25 @@ export class MonoPanel extends LitElement {
           gap: 4px;
           min-height: calc(var(--ks) + 14px);
         }
-        .kits .pk {
+        .modes {
+          grid-template-columns: repeat(3, auto);
+        }
+        .stack {
+          height: auto;
+          min-height: calc(var(--ks) + 14px);
+        }
+        .stack > * {
+          min-height: 26px;
+        }
+        .kits .pk,
+        .modes .pk {
           height: auto;
           min-width: 0;
           padding: 4px 6px 0;
           font-size: 8px;
         }
-        .kits .pk.led::before {
+        .kits .pk.led::before,
+        .modes .pk.led::before {
           top: 3px;
           height: 2px;
         }
@@ -260,6 +342,9 @@ export class MonoPanel extends LitElement {
   private readonly drum = new Selector(this, store, (s) => s.drum);
   private readonly audio = new Selector(this, store, (s) => s.audio);
   private readonly metronome = new Selector(this, store, (s) => s.metronome);
+  private readonly bass = new Selector(this, store, (s) => s.bass);
+  /** On/off view of the BASS pattern, recomputed only when the pattern changes. */
+  private bassGrid: { pattern: BassPattern; grid: Pattern } | null = null;
   /** On/off view of the DRUM pattern, recomputed only when the pattern changes. */
   private drumGrid: { pattern: DrumPattern; grid: Pattern } | null = null;
 
@@ -303,6 +388,7 @@ export class MonoPanel extends LitElement {
             </section>`,
           )}
           ${id === 'drum' ? [this.patternKeys(), this.kitKeys()] : nothing}
+          ${id === 'bass' ? this.bassKeys() : nothing}
           ${id === 'master' ? this.metronomeKeys() : nothing}
           <section>
             <h6>${TEXT.macroSection}</h6>
@@ -318,7 +404,7 @@ export class MonoPanel extends LitElement {
 
   /**
    * The display: a knob reading while turning, else an audio problem worth knowing
-   * about, else the node's name and code (DRUM: its kit).
+   * about, else the node's name and code (DRUM: its kit; BASS: its key).
    */
   private displayText(id: NodeId): string {
     if (this.reading) return this.reading;
@@ -326,6 +412,10 @@ export class MonoPanel extends LitElement {
     if (audio.state === 'blocked') return TEXT.audioBlocked;
     if (audio.state === 'unavailable') return TEXT.audioUnavailable;
     const name = NODE_NAMES[id];
+    if (id === 'bass') {
+      const { root, scale } = this.bass.value;
+      return `${name} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
+    }
     if (id !== 'drum') return `${name} · ${NODE_CODES[id]}`;
 
     const { kit } = this.drum.value;
@@ -416,6 +506,75 @@ export class MonoPanel extends LitElement {
     return this.drumGrid.grid;
   }
 
+  private bassGridFor(pattern: BassPattern): Pattern {
+    if (this.bassGrid?.pattern !== pattern) this.bassGrid = { pattern, grid: gridFromBassPattern(pattern) };
+    return this.bassGrid.grid;
+  }
+
+  /**
+   * BASS: OSC (wave and sub), ESCALA (tonic and scale), MODO (fck-synth's five modes)
+   * and DICE, which makes a new pattern in the current mode.
+   */
+  private bassKeys(): TemplateResult[] {
+    const { wave, sub, root, scale, mode } = this.bass.value;
+    return [
+      html`<section data-section="osc">
+        <h6>${TEXT.oscSection}</h6>
+        <div class="kk stack">
+          <button class="pk" id="wave" data-wave=${wave} aria-label=${TEXT.waveHint} @click=${this.onWave}>
+            ${TEXT.waves[wave]}
+          </button>
+          <button
+            class=${classMap({ pk: true, led: true, on: sub })}
+            id="sub"
+            aria-label=${TEXT.subHint}
+            aria-pressed=${sub}
+            @click=${this.onSub}
+          >
+            ${TEXT.sub}
+          </button>
+        </div>
+      </section>`,
+      html`<section data-section="key">
+        <h6>${TEXT.keySection}</h6>
+        <div class="kk stack">
+          <div class="stp">
+            <button class="pk" data-root="-1" aria-label=${TEXT.rootDown} @click=${() => this.onRoot(-1)}>−</button>
+            <span class="mini" id="root">${ROOTS[root]}</span>
+            <button class="pk" data-root="1" aria-label=${TEXT.rootUp} @click=${() => this.onRoot(1)}>+</button>
+          </div>
+          <div class="stp wide">
+            <button class="pk" data-scale="-1" aria-label=${TEXT.scaleDown} @click=${() => this.onScale(-1)}>−</button>
+            <span class="mini" id="scale">${SCALE_LABELS[scale]}</span>
+            <button class="pk" data-scale="1" aria-label=${TEXT.scaleUp} @click=${() => this.onScale(1)}>+</button>
+          </div>
+        </div>
+      </section>`,
+      html`<section data-section="mode">
+        <h6>${TEXT.modeSection}</h6>
+        <div class="kk modes">
+          ${BASS_MODES.map(
+            (id) => html`<button
+              class=${classMap({ pk: true, led: true, on: id === mode })}
+              data-mode=${id}
+              aria-label="${TEXT.modeHint} ${BASS_MODE_LABELS[id]}"
+              aria-pressed=${id === mode}
+              @click=${() => this.onMode(id)}
+            >
+              ${BASS_MODE_LABELS[id]}
+            </button>`,
+          )}
+        </div>
+      </section>`,
+      html`<section data-section="pattern">
+        <h6>${TEXT.patternSection}</h6>
+        <div class="kk">
+          <button class="pk" id="dice" aria-label=${TEXT.diceHint} @click=${this.onDice}>${TEXT.dice}</button>
+        </div>
+      </section>`,
+    ];
+  }
+
   private knob(param: string, label: string, value: number, big: boolean): TemplateResult {
     return html`<mono-knob
       data-param=${param}
@@ -431,12 +590,14 @@ export class MonoPanel extends LitElement {
     switch (NODE_SPECS[id].zone) {
       case 'sequencer':
         return html`<mono-step-grid
-          .rows=${ROW_LABELS[id]}
+          .rows=${id === 'bass' ? bassRowLabels(this.bass.value.root, this.bass.value.scale) : ROW_LABELS[id]}
           .pattern=${id === 'drum'
             ? this.drumGridFor(this.drum.value.pattern)
-            : id === 'synth' || id === 'bass'
-              ? this.patterns.value[id]
-              : []}
+            : id === 'bass'
+              ? this.bassGridFor(this.bass.value.pattern)
+              : id === 'synth'
+                ? this.patterns.value[id]
+                : []}
           .step=${this.step.value}
           @step-toggle=${this.onStepToggle}
         ></mono-step-grid>`;
@@ -481,8 +642,39 @@ export class MonoPanel extends LitElement {
     if (!isSequenced(id)) return;
     const { row, col } = event.detail;
     if (id === 'drum') store.toggleDrumStep(row, col);
+    else if (id === 'bass') store.toggleBassStep(row, col);
     else store.toggleStep(id, row, col);
     pulse(id, PULSE_MS.step);
+  };
+
+  private readonly onWave = (): void => {
+    store.toggleBassWave();
+    pulse('bass', PULSE_MS.type);
+  };
+
+  private readonly onSub = (): void => {
+    store.toggleBassSub();
+    pulse('bass', PULSE_MS.type);
+  };
+
+  private onRoot(direction: 1 | -1): void {
+    store.nudgeBassRoot(direction);
+    this.reading = `${NODE_NAMES.bass} ${TEXT.root} ${ROOTS[store.getState().bass.root]}`;
+  }
+
+  private onScale(direction: 1 | -1): void {
+    store.nudgeBassScale(direction);
+    this.reading = `${NODE_NAMES.bass} ${TEXT.scale} ${SCALE_LABELS[store.getState().bass.scale]}`;
+  }
+
+  private onMode(mode: BassMode): void {
+    store.setBassMode(mode);
+    this.reading = `${NODE_NAMES.bass} ${TEXT.modeSection} ${BASS_MODE_LABELS[mode]}`;
+  }
+
+  private readonly onDice = (): void => {
+    store.randomizeBass(randomSeed);
+    this.reading = null;
   };
 
   /** Picks the kit (it switches in at the next bar) and plays its kick right away. */

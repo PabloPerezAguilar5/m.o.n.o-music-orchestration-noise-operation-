@@ -13,8 +13,11 @@ export type SequencedId = (typeof SEQUENCED_IDS)[number];
 export const isSequenced = (id: NodeId): id is SequencedId =>
   (SEQUENCED_IDS as readonly NodeId[]).includes(id);
 
-/** Sequenced nodes whose pattern is still a plain on/off grid (DRUM has hits with velocity). */
-export type GridPatternId = Exclude<SequencedId, 'drum'>;
+/**
+ * Sequenced nodes whose pattern is still a plain on/off grid. DRUM has hits with
+ * velocity and BASS has notes, slides and accents; each keeps its own pattern.
+ */
+export type GridPatternId = Exclude<SequencedId, 'drum' | 'bass'>;
 
 export const DIST_TYPES = ['soft', 'hard', 'crush'] as const;
 export type DistType = (typeof DIST_TYPES)[number];
@@ -74,7 +77,8 @@ export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
   bass: {
     params: ['cutoff', 'resonance', 'decay', 'drive'],
     zone: 'sequencer',
-    rows: ['note', 'slide', 'accent'],
+    // Five scale degrees (highest on top), then slide and accent: see bass-patterns.ts.
+    rows: ['degree4', 'degree3', 'degree2', 'degree1', 'degree0', 'slide', 'accent'],
   },
   drone: { params: ['tone', 'detune', 'filter', 'volume'], zone: 'xy', rows: [] },
   dist: { params: ['drive', 'tone', 'mix'], zone: 'type', rows: [] },

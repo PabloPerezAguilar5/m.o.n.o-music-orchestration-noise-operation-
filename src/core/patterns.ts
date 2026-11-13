@@ -1,4 +1,4 @@
-import type { SequencedId } from './nodes';
+import type { GridPatternId } from './nodes';
 
 export const STEPS = 16;
 
@@ -8,8 +8,11 @@ export type Pattern = readonly (readonly boolean[])[];
 const parse = (rows: readonly string[]): Pattern =>
   rows.map((row) => Array.from(row, (char) => char === 'x'));
 
-/** Starting patterns, until the seeded generators arrive. */
-export const DEFAULT_PATTERNS: Readonly<Record<SequencedId, Pattern>> = {
+/**
+ * Starting grids from the prototype. DRUM's becomes its first pattern; BASS starts
+ * from DEFAULT_BASS_PATTERN (bass-patterns.ts), which keeps the prototype's steps.
+ */
+export const DEFAULT_PATTERNS: Readonly<Record<GridPatternId | 'drum', Pattern>> = {
   synth: parse(['x.x..x.x..x.x..x', '......x.......x.', 'x...x...x...x...']),
   drum: parse([
     'x...x...x...x...',
@@ -17,7 +20,6 @@ export const DEFAULT_PATTERNS: Readonly<Record<SequencedId, Pattern>> = {
     '..x...x...x...x.',
     '.......x........',
   ]),
-  bass: parse(['x..x..x.x..x.x..', '...x.........x..', 'x.....x.........']),
 };
 
 /** Returns a new pattern with one step flipped; out-of-range coordinates return the same pattern. */

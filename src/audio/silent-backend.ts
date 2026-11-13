@@ -1,5 +1,8 @@
 import { INITIAL_AUDIO_STATUS, type AudioScene, type AudioStatus } from '../core/audio-scene';
+import { BassSequencer, type BassEvent } from '../core/bass-patterns';
+import { bassMidi } from '../core/bass-scales';
 import { clickAt, type Click } from '../core/metronome';
+import type { NodeId } from '../core/nodes';
 import { LookaheadScheduler } from '../core/scheduler';
 import type { AudioBackend, StatusListener, StepListener } from './backend';
 
@@ -14,6 +17,9 @@ export class SilentBackend implements AudioBackend {
   readonly auditions: string[] = [];
   /** Metronome clicks, with the time the scheduler gave their step. */
   readonly clicks: { step: number; time: number; click: Click }[] = [];
+  /** BASS voice events, as the real backend would send them to its worklet. */
+  readonly bassEvents: BassEvent[] = [];
+  private readonly bassSequencer = new BassSequencer();
   unlocks = 0;
   private readonly scheduler = new LookaheadScheduler();
   private readonly statusListeners = new Set<StatusListener>();
@@ -36,6 +42,7 @@ export class SilentBackend implements AudioBackend {
   stop(): void {
     this.listener = null;
     this.scheduler.stop(this.now);
+    this.bassSequencer.reset();
   }
 
   update(scene: AudioScene): void {
@@ -60,15 +67,21 @@ export class SilentBackend implements AudioBackend {
   /** Moves time to `now` (seconds) and delivers the steps that became due. */
   advanceTo(now: number): void {
     this.now = now;
-    for (const { step, time } of this.scheduler.advance(now)) {
+    for (const { step, time, duration } of this.scheduler.advance(now)) {
       const scene = this.scenes.at(-1);
       const click = scene?.metronome.on ? clickAt(step) : null;
       if (click) this.clicks.push({ step, time, click });
-      const drumHits =
-        scene !== undefined &&
-        scene.nodes.includes('drum') &&
-        scene.drum.pattern.some((row) => (row[step]?.length ?? 0) > 0);
-      this.listener?.({ step, sounding: drumHits ? ['drum'] : [] });
+      const sounding: NodeId[] = [];
+      if (scene?.cables.includes('drum') && scene.drum.pattern.some((row) => (row[step]?.length ?? 0) > 0)) {
+        sounding.push('drum');
+      }
+      if (scene?.cables.includes('bass')) {
+        const { pattern, root, scale } = scene.bass;
+        const events = this.bassSequencer.step(pattern, step, time, duration, (d) => bassMidi(root, scale, d));
+        this.bassEvents.push(...events);
+        if (events.some((event) => event.type === 'on')) sounding.push('bass');
+      }
+      this.listener?.({ step, sounding });
     }
   }
 }

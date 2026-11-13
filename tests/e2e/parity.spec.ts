@@ -85,8 +85,18 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  *    cycled), and the display shows only the kit (the seed is no longer shown
  *    anywhere). The prototype has no equivalent to patch in.
  */
+/*
+ * 6. panel-bass (stage 3): BASS became a real 303-style instrument. The prototype's
+ *    three rows (NOTA, SLD, ACC) became seven: one per note of the key (named after
+ *    it, highest on top), then SLD and ACC, because each step now holds a note. The
+ *    header gained OSC (wave, SUB), ESCALA (tonic and scale), MODO (five modes with
+ *    LEDs) and PATRÓN (DICE), and the display shows the key. No prototype equivalent.
+ *    Cables also gained an invisible, wide tap target (to cut and plug them back); it
+ *    draws nothing, so every other state is still compared.
+ */
 const EXCLUDED_STATES: Readonly<Record<string, string>> = {
   'panel-drum': 'DRUM panel redesigned in stage 2 and after',
+  'panel-bass': 'BASS panel redesigned in stage 3',
 };
 
 const NODE_ORDER = ['synth', 'drum', 'bass', 'drone', 'dist', 'lfo', 'lead'] as const;

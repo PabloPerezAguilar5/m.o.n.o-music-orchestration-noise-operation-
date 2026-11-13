@@ -33,6 +33,9 @@ export function linkAudio(
       state.params.master,
       state.params.drum,
       state.drum,
+      state.params.bass,
+      state.bass,
+      state.unplugged,
       state.transport.bpm,
       state.metronome,
     ];

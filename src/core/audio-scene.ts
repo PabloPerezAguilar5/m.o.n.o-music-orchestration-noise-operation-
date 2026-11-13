@@ -1,3 +1,5 @@
+import type { BassMode, BassPattern } from './bass-patterns';
+import type { ScaleId } from './bass-scales';
 import type { DrumPattern } from './drum-patterns';
 import type { DrumRow, NodeId } from './nodes';
 
@@ -22,16 +24,37 @@ export interface DrumScene {
   readonly rows: Readonly<Record<DrumRow, DrumRowScene>>;
 }
 
+export interface BassScene {
+  /** Changes whenever the pattern is regenerated (DICE, mode, CAOS). Hand edits keep it. */
+  readonly generation: number;
+  readonly pattern: BassPattern;
+  readonly mode: BassMode;
+  /** Tonic 0..11 and scale: which notes the degrees play. */
+  readonly root: number;
+  readonly scale: ScaleId;
+  /** Knob values, 0..1. */
+  readonly cutoff: number;
+  readonly resonance: number;
+  readonly decay: number;
+  readonly drive: number;
+  readonly wave: 'saw' | 'square';
+  readonly sub: boolean;
+}
+
 export interface AudioScene {
   readonly bpm: number;
-  /** Nodes on the canvas. Each one except MASTER has a cable to MASTER. */
+  /** Nodes on the canvas. */
   readonly nodes: readonly NodeId[];
+  /** Nodes whose cable to MASTER is plugged in (cut cables are left out). */
+  readonly cables: readonly NodeId[];
   readonly master: {
     /** Knob values, 0..1. */
     readonly volume: number;
     readonly drumLevel: number;
+    readonly bassLevel: number;
   };
   readonly drum: DrumScene;
+  readonly bass: BassScene;
   readonly metronome: MetronomeScene;
 }
 

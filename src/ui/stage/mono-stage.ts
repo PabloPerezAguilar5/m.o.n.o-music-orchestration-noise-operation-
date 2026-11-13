@@ -147,6 +147,17 @@ export class MonoStage extends LitElement {
         stroke: var(--c);
         filter: drop-shadow(0 0 5px var(--c));
       }
+      .cb.off {
+        stroke-dasharray: 2 7;
+        opacity: 0.45;
+      }
+      /* Invisible, wide tap target over each cable. */
+      .cbh {
+        stroke: transparent;
+        stroke-width: 18;
+        pointer-events: stroke;
+        cursor: pointer;
+      }
     `,
   ];
 
@@ -155,6 +166,7 @@ export class MonoStage extends LitElement {
   private readonly positions = new Selector(this, store, (s) => s.positions);
   private readonly playing = new Selector(this, store, (s) => s.transport.playing);
   private readonly lit = new Selector(this, activity, (lit) => lit);
+  private readonly unplugged = new Selector(this, store, (s) => s.unplugged);
 
   @state() private menuOpen = false;
   @query('#svg') private svg!: SVGSVGElement;
@@ -181,6 +193,7 @@ export class MonoStage extends LitElement {
     const positions = this.positions.value;
     const lit = this.lit.value;
     const playing = this.playing.value;
+    const unplugged = this.unplugged.value;
     const free = INSTRUMENT_IDS.filter((id) => !added.includes(id));
 
     return html`
@@ -198,11 +211,11 @@ export class MonoStage extends LitElement {
         viewBox="0 0 ${CANVAS.width} ${CANVAS.height}"
         preserveAspectRatio="xMidYMid meet"
       >
-        <g id="cables">
+        <g id="cables" @click=${this.onCableClick}>
           ${repeat(
             added.filter((id) => id !== 'master'),
             (id) => id,
-            (id) => cableView(id, positions[id], lit.has(id)),
+            (id) => cableView(id, positions[id], lit.has(id), unplugged.includes(id)),
           )}
         </g>
         <g id="nodes" @pointerdown=${this.onPointerDown}>
@@ -225,6 +238,14 @@ export class MonoStage extends LitElement {
 
   private readonly onPlay = (): void => {
     store.togglePlay();
+  };
+
+  /** Tapping a cable cuts it, or plugs it back. The sound follows at the next bar. */
+  private readonly onCableClick = (event: MouseEvent): void => {
+    const id = (event.target as Element).closest<SVGLineElement>('.cbh')?.dataset.id as NodeId | undefined;
+    if (!id) return;
+    this.menuOpen = false;
+    store.toggleCable(id);
   };
 
   private readonly onMenuToggle = (): void => {
