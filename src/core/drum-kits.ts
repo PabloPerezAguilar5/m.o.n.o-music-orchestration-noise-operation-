@@ -72,5 +72,5 @@ export function pickVariant(seed: number, row: DrumRow, step: number, count: num
   return Math.floor(createRng(streamSeed(seed, `variant:${row}:${step}`))() * count);
 }
 
-/** Short kit name for the display: "909samples" → "909". */
+/** Short kit name for the display: "samples808" → "808". */
 export const kitLabel = (id: string): string => id.replace(/samples/g, '').toUpperCase() || id.toUpperCase();

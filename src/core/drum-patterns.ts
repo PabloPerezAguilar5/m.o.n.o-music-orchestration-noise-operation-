@@ -1,12 +1,12 @@
 import { generate, type GeneratorName, type Hit, type HitPattern } from './generators';
 import { DRUM_ROWS, type DrumRow } from './nodes';
-import type { Pattern } from './patterns';
+import { STEPS, type Pattern } from './patterns';
 import { createRng, streamSeed, type RandomSource } from './random';
 
 /** DRUM pattern: one HitPattern per row, in DRUM_ROWS order. */
 export type DrumPattern = readonly HitPattern[];
 
-/** Seed before the first roll of the dice ("MONO" in ASCII). */
+/** Seed before the first press of RNDM ("MONO" in ASCII). */
 export const INITIAL_SEED = 0x4d4f4e4f;
 
 /** A step switched on by hand. */
@@ -19,6 +19,15 @@ export const patternFromGrid = (grid: Pattern): DrumPattern =>
 /** On/off view of a pattern, for the step grid. */
 export const gridFromPattern = (pattern: DrumPattern): Pattern =>
   pattern.map((steps) => steps.map((hits) => hits.length > 0));
+
+/** Whether two patterns light the same steps (what the step grid shows). */
+export function sameGrid(a: DrumPattern, b: DrumPattern): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((steps, row) => {
+    const other = b[row] ?? [];
+    return steps.length === other.length && steps.every((hits, col) => (hits.length > 0) === ((other[col]?.length ?? 0) > 0));
+  });
+}
 
 /** Returns a new pattern with one step switched on (one plain hit) or off. */
 export function toggleDrumStep(pattern: DrumPattern, row: number, col: number): DrumPattern {
@@ -47,6 +56,32 @@ const evolveFrom =
 const FOUR_ON_THE_FLOOR = run('euclid', () => [4]);
 const BACKBEAT = run('euclid', () => [2, 16, 4]); // steps 4 and 12
 
+/** `base(t)` plus 0..`extra` evenly spread hits, rotated by 0..`rotations - 1` steps; both picked by the seed. */
+const seededEuclid =
+  (base: (t: number) => number, extra: number, rotations: number): Recipe =>
+  (t, random, row) => {
+    const pulses = base(t) + Math.floor(random() * (extra + 1));
+    const rotation = Math.floor(random() * rotations);
+    return generate('euclid', [pulses, STEPS, rotation], { random, row });
+  };
+
+/**
+ * Adds `min..max` quiet hits on empty steps of a base pattern, picked by the seed.
+ * The base groove stays intact, and the low bands still change from seed to seed.
+ */
+const withGhosts =
+  (base: Recipe, min: number, max: number, velocity: number): Recipe =>
+  (t, random, row) => {
+    const pattern = base(t, random, row).map((hits) => [...hits]);
+    const free = pattern.flatMap((hits, step) => (hits.length ? [] : [step]));
+    const count = min + Math.floor(random() * (max - min + 1));
+    for (let i = 0; i < count && free.length > 0; i++) {
+      const [step] = free.splice(Math.floor(random() * free.length), 1);
+      if (step !== undefined) pattern[step] = [{ velocity, offset: 0 }];
+    }
+    return pattern;
+  };
+
 export interface ChaosBand {
   /** Upper end of the band (exclusive, except the last one). */
   readonly until: number;
@@ -65,7 +100,7 @@ export const CHAOS_BANDS: readonly ChaosBand[] = [
     rows: {
       kick: FOUR_ON_THE_FLOOR,
       snare: BACKBEAT,
-      hat: run('euclid', (t) => [4 + Math.round(t * 4), 16, 2]),
+      hat: seededEuclid((t) => 4 + Math.round(t * 4), 4, 4),
       perc: run('minimal', (t) => [t]),
     },
   },
@@ -73,10 +108,10 @@ export const CHAOS_BANDS: readonly ChaosBand[] = [
     until: 0.4,
     name: 'GROOVE',
     rows: {
-      kick: run('human', (t) => [t]),
-      snare: run('human', (t) => [t]),
-      hat: run('human', (t) => [t]),
-      perc: run('euclid', () => [3, 16, 3]),
+      kick: withGhosts(run('human', (t) => [t]), 1, 2, 0.6),
+      snare: withGhosts(run('human', (t) => [t]), 1, 2, 0.35),
+      hat: withGhosts(run('human', (t) => [t]), 0, 2, 0.45),
+      perc: seededEuclid(() => 3, 0, 8),
     },
   },
   {

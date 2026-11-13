@@ -27,6 +27,8 @@ export interface AudioBackend {
   stop(): void;
   /** New desired state. Structural changes wait for the next bar while playing. */
   update(scene: AudioScene): void;
+  /** Plays one kick of a kit right away, to hear it (playing or not). Loads the kit if needed. */
+  audition(kit: string): void;
   /** Status changes (audio running, kits available, failed files). Returns an unsubscribe function. */
   onStatus(listener: StatusListener): () => void;
 }

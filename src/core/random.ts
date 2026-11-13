@@ -20,13 +20,9 @@ export function streamSeed(seed: number, key: string): number {
   return hash;
 }
 
-/** A fresh seed for the dice. The one place randomness is not reproducible, by design. */
+/** A fresh seed for RNDM. The one place randomness is not reproducible, by design. */
 export function randomSeed(): number {
   const values = new Uint32Array(1);
   crypto.getRandomValues(values);
   return values[0] ?? 0;
 }
-
-/** Seed as 8 hex digits, for the display. */
-export const formatSeed = (seed: number): string =>
-  (seed >>> 0).toString(16).toUpperCase().padStart(8, '0');

@@ -7,6 +7,7 @@ import {
 } from '../core/audio-scene';
 import { pickVariant } from '../core/drum-kits';
 import type { DrumPattern } from '../core/drum-patterns';
+import { clickAt } from '../core/metronome';
 import { DRUM_ROWS, type NodeId } from '../core/nodes';
 import { LookaheadScheduler, type ScheduledStep } from '../core/scheduler';
 import { startTicker, type AudioTicker } from './audio-clock';
@@ -14,6 +15,7 @@ import type { AudioBackend, StatusListener, StepEvent, StepListener } from './ba
 import { DrumModule, type LoadedKit } from './drum-module';
 import { AudioGraph } from './graph';
 import { MasterBus } from './master';
+import { MetronomeVoice } from './metronome';
 import { MANIFEST_FILE, SampleLibrary } from './sample-library';
 
 /** Steps are scheduled this far ahead of the audio clock, seconds. */
@@ -22,6 +24,9 @@ const LOOKAHEAD = 0.1;
 const START_DELAY = 0.05;
 /** Render quanta between scheduler wake-ups (4 × 128 frames ≈ 11 ms at 48 kHz). */
 const TICK_QUANTA = 4;
+/** A kit's sample hit, when its key is touched: a little after now, at this velocity. */
+const AUDITION_DELAY = 0.01;
+const AUDITION_VELOCITY = 0.9;
 
 const MASTER = 'master';
 const DRUM: NodeId = 'drum';
@@ -56,6 +61,9 @@ export class WebAudioBackend implements AudioBackend {
   private graph: AudioGraph | null = null;
   private master: MasterBus | null = null;
   private drum: DrumModule | null = null;
+  private metronome: MetronomeVoice | null = null;
+  /** Kit waiting to be heard (its samples may still be loading). */
+  private pendingAudition: string | null = null;
   private library: SampleLibrary | null = null;
   private ticker: AudioTicker | null = null;
   private readonly scheduler = new LookaheadScheduler(undefined, { lookahead: LOOKAHEAD });
@@ -116,6 +124,12 @@ export class WebAudioBackend implements AudioBackend {
     // Changes waiting for a bar that will not come apply now.
     this.scheduler.stop(now);
     this.drum?.cancelAfter(now);
+    this.metronome?.cancelAfter(now);
+  }
+
+  audition(kit: string): void {
+    this.pendingAudition = kit;
+    this.playAudition();
   }
 
   update(scene: AudioScene): void {
@@ -134,6 +148,11 @@ export class WebAudioBackend implements AudioBackend {
     return this.master?.level() ?? 0;
   }
 
+  /** Peak of the metronome output, which bypasses the master. For tests. */
+  clickLevel(): number {
+    return this.metronome?.level() ?? 0;
+  }
+
   // Start-up -------------------------------------------------------------------------------------
 
   private async initialize(context: AudioContext): Promise<void> {
@@ -141,6 +160,7 @@ export class WebAudioBackend implements AudioBackend {
     this.master.output.connect(context.destination);
     this.graph = new AudioGraph(context);
     this.graph.add(MASTER, this.master);
+    this.metronome = new MetronomeVoice(context, context.destination);
     this.library = new SampleLibrary((data) => context.decodeAudioData(data));
 
     void this.library.loadManifest().then(
@@ -155,6 +175,7 @@ export class WebAudioBackend implements AudioBackend {
       this.apply(this.scene);
     }
     this.onContextState();
+    this.playAudition();
   }
 
   private readonly onContextState = (): void => {
@@ -186,6 +207,7 @@ export class WebAudioBackend implements AudioBackend {
     this.scheduler.setBpm(scene.bpm);
     this.master!.setVolume(masterGain(scene.master.volume), now);
     this.master!.setChannelLevel(DRUM, channelGain(scene.master.drumLevel), now);
+    this.metronome!.setVolume(scene.metronome.volume, now);
     for (const row of DRUM_ROWS) this.drum?.setRow(row, scene.drum.rows[row], now);
 
     if (!this.applied) {
@@ -235,7 +257,7 @@ export class WebAudioBackend implements AudioBackend {
       }
     }
 
-    // Pattern regenerated (dice, CAOS).
+    // Pattern regenerated (RNDM, CAOS).
     applied.generation = scene.drum.generation;
     applied.seed = scene.drum.seed;
     applied.pattern = scene.drum.pattern;
@@ -264,7 +286,22 @@ export class WebAudioBackend implements AudioBackend {
       if (kit.failed.includes(MANIFEST_FILE)) return;
       this.kits.set(id, kit);
       if (this.scene?.drum.kit === id && this.applied?.kit !== id) this.queueStructural();
+      if (this.pendingAudition === id) this.playAudition();
     });
+  }
+
+  /** Plays the pending kit's kick through DRUM, once its samples are in. */
+  private playAudition(): void {
+    const id = this.pendingAudition;
+    const context = this.context;
+    if (id === null || !this.initialized || !context) return;
+    const kit = this.kits.get(id);
+    if (!kit) {
+      this.requestKit(id);
+      return;
+    }
+    this.pendingAudition = null;
+    this.drum?.preview(kit, 'kick', AUDITION_VELOCITY, context.currentTime + AUDITION_DELAY);
   }
 
   // Clock ----------------------------------------------------------------------------------------
@@ -284,6 +321,10 @@ export class WebAudioBackend implements AudioBackend {
   };
 
   private playStep({ step, time, duration }: ScheduledStep): void {
+    // The metronome rides the same clock as every node, whatever is on the canvas.
+    const click = this.scene?.metronome.on ? clickAt(step) : null;
+    if (click) this.metronome?.click(click, time);
+
     const sounding: NodeId[] = [];
     const drum = this.drum;
     const applied = this.applied;

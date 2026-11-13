@@ -3,6 +3,7 @@ import { SilentBackend } from '../../src/audio/silent-backend';
 import { INITIAL_AUDIO_STATUS } from '../../src/core/audio-scene';
 import type { NodeId } from '../../src/core/nodes';
 import { linkAudio } from '../../src/state/audio-link';
+import { Cues } from '../../src/state/cues';
 import { sceneFromState } from '../../src/state/scene';
 import { Store } from '../../src/state/store';
 
@@ -78,6 +79,36 @@ describe('linkAudio (store ↔ backend)', () => {
     const status = { ...INITIAL_AUDIO_STATUS, state: 'running' as const, kits: ['glitch'] };
     backend.emitStatus(status);
     expect(store.getState().audio).toEqual(status);
+  });
+
+  it('clicks on the beats with the same clock as the steps, with any node or none', () => {
+    store.toggleMetronome();
+    store.togglePlay(); // only MASTER on the canvas
+    // One bar at 120 bpm (steps every 0.125 s), woken up every 50 ms like the real ticker.
+    for (let ms = 0; ms <= 2000; ms += 50) backend.advanceTo(ms / 1000);
+    expect(backend.clicks).toEqual([
+      { step: 0, time: 0, click: 'accent' },
+      { step: 4, time: 0.5, click: 'beat' },
+      { step: 8, time: 1, click: 'beat' },
+      { step: 12, time: 1.5, click: 'beat' },
+      { step: 0, time: 2, click: 'accent' },
+    ]);
+  });
+
+  it('does not click while the metronome is off', () => {
+    store.addNode('drum');
+    for (let ms = 0; ms <= 2000; ms += 50) backend.advanceTo(ms / 1000);
+    expect(store.getState().transport.step).toBe(0); // it did play a whole bar
+    expect(backend.clicks).toEqual([]);
+  });
+
+  it('passes kit auditions to the backend', () => {
+    const fresh = new Store();
+    const silent = new SilentBackend();
+    const cues = new Cues();
+    linkAudio(fresh, silent, vi.fn(), cues);
+    cues.send({ type: 'audition', kit: 'trip' });
+    expect(silent.auditions).toEqual(['trip']);
   });
 
   it('can be undone', () => {

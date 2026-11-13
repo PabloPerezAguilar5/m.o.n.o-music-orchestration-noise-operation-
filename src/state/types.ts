@@ -14,10 +14,18 @@ export interface TransportState {
 export interface DrumState {
   /** Kit id (folder in public/samples/drums). */
   readonly kit: string;
+  /** Generates the pattern; never shown. Kept so a pattern can be saved and rebuilt. */
   readonly seed: number;
-  /** Bumped on every regeneration (dice, CAOS); hand edits keep it. */
+  /** Bumped on every regeneration (RNDM, CAOS); hand edits keep it. */
   readonly generation: number;
   readonly pattern: DrumPattern;
+}
+
+/** CLICK on the MASTER panel. */
+export interface MetronomeState {
+  readonly on: boolean;
+  /** VOL knob, 0..1. */
+  readonly volume: number;
 }
 
 /** Knob values (0..1) by parameter id. */
@@ -37,6 +45,7 @@ export interface AppState {
   readonly drone: Point;
   readonly distType: DistType;
   readonly transport: TransportState;
+  readonly metronome: MetronomeState;
   /** Reported by the audio backend. */
   readonly audio: AudioStatus;
 }

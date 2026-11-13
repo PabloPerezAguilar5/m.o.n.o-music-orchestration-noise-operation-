@@ -6,6 +6,7 @@ import {
   gridFromPattern,
   MANUAL_HIT,
   patternFromGrid,
+  sameGrid,
   toggleDrumStep,
 } from '../../src/core/drum-patterns';
 import {
@@ -18,7 +19,7 @@ import {
 } from '../../src/core/generators';
 import { DRUM_ROWS } from '../../src/core/nodes';
 import { DEFAULT_PATTERNS } from '../../src/core/patterns';
-import { createRng, formatSeed, streamSeed } from '../../src/core/random';
+import { createRng, streamSeed } from '../../src/core/random';
 
 const run = (name: GeneratorName, args: number[] = [], seed = 1, row: (typeof DRUM_ROWS)[number] = 'kick') =>
   generate(name, args, { random: createRng(seed), row });
@@ -41,11 +42,6 @@ describe('random', () => {
   it('derives independent streams by key', () => {
     expect(streamSeed(1, 'drum:kick')).toBe(streamSeed(1, 'drum:kick'));
     expect(streamSeed(1, 'drum:kick')).not.toBe(streamSeed(1, 'drum:snare'));
-  });
-
-  it('formats seeds as 8 hex digits', () => {
-    expect(formatSeed(0x4d4f4e4f)).toBe('4D4F4E4F');
-    expect(formatSeed(255)).toBe('000000FF');
   });
 });
 
@@ -164,9 +160,28 @@ describe('DRUM pattern', () => {
       return hits / 40;
     };
     expect(average(0.95)).toBeGreaterThan(average(0.05));
-    // At the bottom, kick, snare and hat do not depend on the seed (only perc's rotation does);
-    // at the top, everything does.
-    expect(generateDrumPattern(1, 0).slice(0, 3)).toEqual(generateDrumPattern(2, 0).slice(0, 3));
+    // At the bottom the kick and snare stay put whatever the seed; at the top, everything moves.
+    for (let seed = 1; seed <= 20; seed++) {
+      expect(onSteps(generateDrumPattern(seed, 0)[0]!)).toEqual([0, 4, 8, 12]);
+      expect(onSteps(generateDrumPattern(seed, 0)[1]!)).toEqual([4, 12]);
+    }
     expect(generateDrumPattern(1, 0.95)).not.toEqual(generateDrumPattern(2, 0.95));
+  });
+
+  // Bug fixed: at the starting CAOS (0.2, the bottom of GROOVE) every seed gave the
+  // same grid, so RNDM did nothing after its first press.
+  it.each([0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1])('gives many different grids across seeds at CAOS %s', (chaos) => {
+    const grids = new Set<string>();
+    for (let seed = 1; seed <= 50; seed++) {
+      grids.add(JSON.stringify(gridFromPattern(generateDrumPattern(seed * 7919, chaos))));
+    }
+    expect(grids.size).toBeGreaterThanOrEqual(10);
+  });
+
+  it('sameGrid compares what the step grid shows, not velocities', () => {
+    const pattern = generateDrumPattern(7, 0.5);
+    const louder = pattern.map((row) => row.map((hits) => hits.map((hit) => ({ ...hit, velocity: 1 }))));
+    expect(sameGrid(pattern, louder)).toBe(true);
+    expect(sameGrid(pattern, toggleDrumStep(pattern, 2, 5))).toBe(false);
   });
 });

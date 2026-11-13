@@ -56,6 +56,18 @@ export const SECTION_LABELS: Readonly<Record<string, string>> = {
   perc: 'PRC',
 };
 
+/** Order of the DRUM kit keys (kit ids). Kits the manifest adds later go after these. */
+export const KIT_ORDER: readonly string[] = [
+  'samples808',
+  'freaksamples',
+  'glitch',
+  'trip',
+  'acid',
+  'house',
+  'lab',
+  'linnrock',
+];
+
 export const DIST_TYPE_LABELS: Readonly<Record<DistType, string>> = {
   soft: 'SUAVE',
   hard: 'DURA',
@@ -78,11 +90,14 @@ export const TEXT = {
   tempoInput: 'Tempo en BPM',
   playStop: 'Reproducir o detener',
   patternSection: 'PATRÓN',
-  kit: 'KIT',
-  kitHint: 'Cambiar kit',
-  dice: 'DADO',
-  diceHint: 'Tirar el dado: patrón nuevo',
-  seed: 'SEMILLA',
+  rndm: 'RNDM',
+  rndmHint: 'Patrón nuevo al azar',
+  kitSection: 'KIT',
+  kitHint: 'Kit',
+  clickSection: 'CLICK',
+  click: 'CLICK',
+  clickHint: 'Metrónomo: prender o apagar',
+  clickVolume: 'VOL',
   missing: 'FALTA',
   audioBlocked: 'AUDIO BLOQUEADO · TOCÁ ▶',
   audioUnavailable: 'SIN AUDIO EN ESTE NAVEGADOR',

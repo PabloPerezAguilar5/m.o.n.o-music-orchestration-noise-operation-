@@ -1,10 +1,10 @@
 import { WebAudioBackend } from './audio/web-audio-backend';
-import { activity, pulse, store } from './state';
+import { activity, cues, pulse, store } from './state';
 import { linkAudio } from './state/audio-link';
 import './ui/mono-app';
 
 const backend = new WebAudioBackend();
-linkAudio(store, backend, pulse);
+linkAudio(store, backend, pulse, cues);
 
 // Browsers only let audio start inside a user gesture. The first touch anywhere
 // (the + button, play, anything) wakes it up; later touches retry if it was blocked.
@@ -14,5 +14,7 @@ window.addEventListener('keydown', unlock, { capture: true });
 
 if (import.meta.env.DEV) {
   // Probe for the browser tests (dev server only): is sound coming out of the master?
-  Object.assign(window, { __mono: { level: () => backend.level(), store, activity } });
+  Object.assign(window, {
+    __mono: { level: () => backend.level(), clickLevel: () => backend.clickLevel(), store, activity },
+  });
 }

@@ -3,26 +3,6 @@
   "rows": ["kick","snare","hat","perc"],
   "kits": [
     {
-      "id": "909samples",
-      "files": [
-        { "file": "kick-1.wav", "row": "kick" },
-        { "file": "kick-2.wav", "row": "kick" },
-        { "file": "kick-3.wav", "row": "kick" },
-        { "file": "snare-long.wav", "row": "snare" },
-        { "file": "snare-low.wav", "row": "snare" },
-        { "file": "snare.wav", "row": "snare" },
-        { "file": "hat-1.wav", "row": "hat" },
-        { "file": "hat-2.wav", "row": "hat" },
-        { "file": "hat-3.wav", "row": "hat" },
-        { "file": "clap.wav", "row": "perc" },
-        { "file": "open-hat.wav", "row": null },
-        { "file": "crash.wav", "row": null },
-        { "file": "ride.wav", "row": null },
-        { "file": "tom-hi.wav", "row": null },
-        { "file": "tom-mid.wav", "row": null }
-      ]
-    },
-    {
       "id": "freaksamples",
       "files": [
         { "file": "kick-gnarl-5.wav", "row": "kick" },
@@ -71,6 +51,42 @@
     },
     {
       "id": "trip",
+      "files": [
+        { "file": "kick.wav", "row": "kick" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat.wav", "row": "hat" },
+        { "file": "perc.wav", "row": "perc" }
+      ]
+    },
+    {
+      "id": "acid",
+      "files": [
+        { "file": "kick.wav", "row": "kick" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat.wav", "row": "hat" },
+        { "file": "perc.wav", "row": "perc" }
+      ]
+    },
+    {
+      "id": "house",
+      "files": [
+        { "file": "kick.wav", "row": "kick" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat.wav", "row": "hat" },
+        { "file": "hat-pedal.wav", "row": "perc" }
+      ]
+    },
+    {
+      "id": "lab",
+      "files": [
+        { "file": "kick.wav", "row": "kick" },
+        { "file": "snare.wav", "row": "snare" },
+        { "file": "hat.wav", "row": "hat" },
+        { "file": "perc.wav", "row": "perc" }
+      ]
+    },
+    {
+      "id": "linnrock",
       "files": [
         { "file": "kick.wav", "row": "kick" },
         { "file": "snare.wav", "row": "snare" },

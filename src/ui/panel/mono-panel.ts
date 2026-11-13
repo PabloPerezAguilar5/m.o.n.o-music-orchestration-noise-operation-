@@ -1,12 +1,14 @@
 import { css, html, LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
 import { kitLabel } from '../../core/drum-kits';
 import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
+import { clickAt } from '../../core/metronome';
 import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } from '../../core/nodes';
 import type { Pattern } from '../../core/patterns';
-import { formatSeed, randomSeed } from '../../core/random';
-import { pulse, store } from '../../state';
-import { KNOB_LABELS, NODE_CODES, NODE_NAMES, ROW_LABELS, SECTION_LABELS, TEXT } from '../labels';
+import { randomSeed } from '../../core/random';
+import { cues, pulse, store } from '../../state';
+import { KIT_ORDER, KNOB_LABELS, NODE_CODES, NODE_NAMES, ROW_LABELS, SECTION_LABELS, TEXT } from '../labels';
 import { Selector } from '../store-controller';
 import { hardwareKey, reset } from '../styles/shared';
 import { NODE_COLORS } from '../theme';
@@ -193,6 +195,58 @@ export class MonoPanel extends LitElement {
       .pk:active:not(:disabled) {
         box-shadow: inset 0 3px 0 var(--c);
       }
+      /* Keys with an LED on top (KIT, CLICK), like the sequencer steps. */
+      .pk.led {
+        position: relative;
+        padding-top: 6px;
+      }
+      .pk.led::before {
+        content: '';
+        position: absolute;
+        left: 30%;
+        right: 30%;
+        top: 4px;
+        height: 3px;
+        border-radius: 1px;
+        background: #3c2a2a;
+      }
+      .pk.led.on::before {
+        background: var(--c);
+        box-shadow: 0 0 6px var(--c);
+      }
+      /* Beat 1 of the bar: a stronger flash. */
+      .pk.led.on.acc::before {
+        left: 22%;
+        right: 22%;
+        box-shadow:
+          0 0 4px var(--c),
+          0 0 12px var(--c);
+      }
+      .kits {
+        gap: clamp(4px, 0.8vw, 8px);
+      }
+      /* Narrow screens: eight kits do not fit in one row, so they go in two rows of
+         four, each at least 26px tall for a finger (the knob row grows a little). */
+      @media (max-width: 1100px) {
+        .kits {
+          display: grid;
+          grid-template-columns: repeat(4, auto);
+          grid-auto-rows: minmax(26px, 1fr);
+          align-items: stretch;
+          gap: 4px;
+          min-height: calc(var(--ks) + 14px);
+        }
+        .kits .pk {
+          height: auto;
+          min-width: 0;
+          padding: 4px 6px 0;
+          font-size: 8px;
+        }
+        .kits .pk.led::before {
+          top: 3px;
+          height: 2px;
+        }
+      }
     `,
   ];
 
@@ -205,6 +259,7 @@ export class MonoPanel extends LitElement {
   private readonly step = new Selector(this, store, (s) => s.transport.step);
   private readonly drum = new Selector(this, store, (s) => s.drum);
   private readonly audio = new Selector(this, store, (s) => s.audio);
+  private readonly metronome = new Selector(this, store, (s) => s.metronome);
   /** On/off view of the DRUM pattern, recomputed only when the pattern changes. */
   private drumGrid: { pattern: DrumPattern; grid: Pattern } | null = null;
 
@@ -247,7 +302,8 @@ export class MonoPanel extends LitElement {
               </div>
             </section>`,
           )}
-          ${id === 'drum' ? this.patternKeys() : nothing}
+          ${id === 'drum' ? [this.patternKeys(), this.kitKeys()] : nothing}
+          ${id === 'master' ? this.metronomeKeys() : nothing}
           <section>
             <h6>${TEXT.macroSection}</h6>
             <div class="kk">
@@ -262,7 +318,7 @@ export class MonoPanel extends LitElement {
 
   /**
    * The display: a knob reading while turning, else an audio problem worth knowing
-   * about, else the node's name and code (DRUM: kit and seed).
+   * about, else the node's name and code (DRUM: its kit).
    */
   private displayText(id: NodeId): string {
     if (this.reading) return this.reading;
@@ -272,13 +328,13 @@ export class MonoPanel extends LitElement {
     const name = NODE_NAMES[id];
     if (id !== 'drum') return `${name} · ${NODE_CODES[id]}`;
 
-    const { kit, seed } = this.drum.value;
+    const { kit } = this.drum.value;
     const missing = audio.missing[kit] ?? audio.missing['*'] ?? [];
     if (missing.length > 0) {
       const more = missing.length > 1 ? ` +${missing.length - 1}` : '';
       return `${name} · ${TEXT.missing} ${missing[0]}${more}`;
     }
-    return `${name} · ${kitLabel(kit)} · ${TEXT.seed} ${formatSeed(seed)}`;
+    return `${name} · ${kitLabel(kit)}`;
   }
 
   private knobLabel(id: NodeId, param: string): string {
@@ -292,23 +348,65 @@ export class MonoPanel extends LitElement {
     return group ? `${group} ${label}` : label;
   }
 
-  /** DRUM: KIT cycles through the kits, DADO rolls a new seed. */
+  /** DRUM: RNDM makes a new pattern. */
   private patternKeys(): TemplateResult {
     return html`<section data-section="pattern">
       <h6>${TEXT.patternSection}</h6>
       <div class="kk">
+        <button class="pk" id="rndm" aria-label=${TEXT.rndmHint} @click=${this.onRandomize}>
+          ${TEXT.rndm}
+        </button>
+      </div>
+    </section>`;
+  }
+
+  /** DRUM: one key per kit, the active one with its LED on. Off until the manifest is in. */
+  private kitKeys(): TemplateResult {
+    const available = this.audio.value.kits;
+    const active = this.drum.value.kit;
+    const kits = [...KIT_ORDER, ...available.filter((kit) => !KIT_ORDER.includes(kit))];
+    return html`<section data-section="kit">
+      <h6>${TEXT.kitSection}</h6>
+      <div class="kk kits">
+        ${kits.map(
+          (kit) => html`<button
+            class=${classMap({ pk: true, led: true, on: kit === active })}
+            data-kit=${kit}
+            aria-label="${TEXT.kitHint} ${kitLabel(kit)}"
+            aria-pressed=${kit === active}
+            ?disabled=${!available.includes(kit)}
+            @click=${() => this.onKit(kit)}
+          >
+            ${kitLabel(kit)}
+          </button>`,
+        )}
+      </div>
+    </section>`;
+  }
+
+  /** MASTER: metronome on/off with an LED that flashes on each beat, and its volume. */
+  private metronomeKeys(): TemplateResult {
+    const { on, volume } = this.metronome.value;
+    const click = on ? clickAt(this.step.value) : null;
+    return html`<section data-section="metronome">
+      <h6>${TEXT.clickSection}</h6>
+      <div class="kk">
         <button
-          class="pk"
-          id="kit"
-          aria-label=${TEXT.kitHint}
-          ?disabled=${this.audio.value.kits.length === 0}
-          @click=${this.onKit}
+          class=${classMap({ pk: true, led: true, on: click !== null, acc: click === 'accent' })}
+          id="click"
+          data-on=${on}
+          aria-label=${TEXT.clickHint}
+          aria-pressed=${on}
+          @click=${this.onClickToggle}
         >
-          ${TEXT.kit}
+          ${TEXT.click}
         </button>
-        <button class="pk" id="dice" aria-label=${TEXT.diceHint} @click=${this.onDice}>
-          ${TEXT.dice}
-        </button>
+        <mono-knob
+          data-param="clickVolume"
+          .label=${TEXT.clickVolume}
+          .value=${volume}
+          @knob-input=${this.onClickVolume}
+        ></mono-knob>
       </div>
     </section>`;
   }
@@ -387,14 +485,25 @@ export class MonoPanel extends LitElement {
     pulse(id, PULSE_MS.step);
   };
 
-  private readonly onKit = (): void => {
-    store.nextKit();
+  /** Picks the kit (it switches in at the next bar) and plays its kick right away. */
+  private onKit(kit: string): void {
+    store.selectKit(kit);
+    cues.send({ type: 'audition', kit });
+    this.reading = null;
+  }
+
+  private readonly onRandomize = (): void => {
+    store.randomize(randomSeed);
     this.reading = null;
   };
 
-  private readonly onDice = (): void => {
-    store.rollDice(randomSeed());
-    this.reading = null;
+  private readonly onClickToggle = (): void => {
+    store.toggleMetronome();
+  };
+
+  private readonly onClickVolume = (event: KnobInputEvent): void => {
+    store.setMetronomeVolume(event.detail.value);
+    this.reading = `${NODE_NAMES.master} ${TEXT.clickSection} ${TEXT.clickVolume} ${Math.round(event.detail.value * 127)}`;
   };
 
   private readonly onPad = (event: XyInputEvent): void => {

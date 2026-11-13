@@ -77,8 +77,20 @@ export class DrumModule implements AudioModule {
 
   /** Plays one hit of a row at `time`. */
   trigger(row: DrumRow, velocity: number, time: number, variant: number): void {
+    this.play(this.kit, row, velocity, time, variant);
+  }
+
+  /**
+   * One hit of a row from any kit, not necessarily the one playing, through that row's
+   * volume and tone. Used to hear a kit before it switches in at the next bar.
+   */
+  preview(kit: LoadedKit, row: DrumRow, velocity: number, time: number): void {
+    this.play(kit, row, velocity, time, 0);
+  }
+
+  private play(kit: LoadedKit | null, row: DrumRow, velocity: number, time: number, variant: number): void {
     const rate = this.rates[row];
-    const buffers = this.kit?.rows[row] ?? [];
+    const buffers = kit?.rows[row] ?? [];
     const buffer = buffers[variant % Math.max(1, buffers.length)];
     const sources = buffer
       ? [this.playSample(buffer, this.rows[row], time, velocity, rate)]

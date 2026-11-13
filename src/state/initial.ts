@@ -15,7 +15,7 @@ import { BPM_DEFAULT } from '../core/transport';
 import type { AppState, ParamValues } from './types';
 
 const MACRO_DEFAULT = 0.2;
-export const INITIAL_KIT = '909samples';
+export const INITIAL_KIT = 'samples808';
 
 /** Knobs start spread across their range, as in the prototype. */
 const defaultParams = (id: NodeId): ParamValues => {
@@ -49,7 +49,7 @@ export function createInitialState(): AppState {
     positions: DEFAULT_POSITIONS,
     params,
     patterns: { synth: DEFAULT_PATTERNS.synth, bass: DEFAULT_PATTERNS.bass },
-    // Starts with the prototype's pattern; the first roll of the dice replaces it.
+    // Starts with the prototype's pattern; the first press of RNDM replaces it.
     drum: {
       kit: INITIAL_KIT,
       seed: INITIAL_SEED,
@@ -59,6 +59,7 @@ export function createInitialState(): AppState {
     drone: { x: 0.5, y: 0.5 },
     distType: 'soft',
     transport: { playing: false, bpm: BPM_DEFAULT, step: -1 },
+    metronome: { on: false, volume: 0.7 },
     audio: INITIAL_AUDIO_STATUS,
   };
 }

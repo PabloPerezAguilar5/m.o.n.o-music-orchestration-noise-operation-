@@ -23,5 +23,6 @@ export function sceneFromState(state: AppState): AudioScene {
       pattern: state.drum.pattern,
       rows,
     },
+    metronome: state.metronome,
   };
 }

@@ -11,15 +11,18 @@ describe('parseDrumManifest', () => {
   it('accepts the real manifest', () => {
     const manifest = parseDrumManifest(realManifest);
     expect(manifest.kits.map((kit) => kit.id)).toEqual([
-      '909samples',
       'freaksamples',
       'glitch',
       'samples808',
       'trip',
+      'acid',
+      'house',
+      'lab',
+      'linnrock',
     ]);
-    const kit909 = manifest.kits[0]!;
-    expect(filesForRow(kit909, 'kick')).toEqual(['kick-1.wav', 'kick-2.wav', 'kick-3.wav']);
-    expect(filesForRow(kit909, 'perc')).toEqual(['clap.wav']);
+    const kit808 = manifest.kits.find((kit) => kit.id === 'samples808')!;
+    expect(filesForRow(kit808, 'kick')).toEqual(['kick-long.wav', 'kick-short.wav']);
+    expect(filesForRow(kit808, 'perc')).toEqual(['woodblock.wav']);
   });
 
   it.each([
@@ -54,7 +57,8 @@ describe('pickVariant', () => {
 });
 
 it('kitLabel shortens kit ids for the display', () => {
-  expect(kitLabel('909samples')).toBe('909');
+  expect(kitLabel('freaksamples')).toBe('FREAK');
+  expect(kitLabel('linnrock')).toBe('LINNROCK');
   expect(kitLabel('samples808')).toBe('808');
   expect(kitLabel('glitch')).toBe('GLITCH');
 });

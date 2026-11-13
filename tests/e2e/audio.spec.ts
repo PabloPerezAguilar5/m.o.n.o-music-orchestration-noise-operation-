@@ -17,7 +17,11 @@ interface AudioLog {
 declare global {
   interface Window {
     __audioLog: AudioLog;
-    __mono: { level(): number };
+    __mono: {
+      level(): number;
+      clickLevel(): number;
+      store: { getState(): { drum: { seed: number } } };
+    };
   }
 }
 
@@ -67,7 +71,7 @@ function watchErrors(page: Page, expected: RegExp[] = []): string[] {
 
 const audioState = (page: Page) => page.locator('mono-app').getAttribute('audio-state');
 
-/** Highest master RMS over ~1.5 s (several bars of 909 at 120 bpm). */
+/** Highest master RMS over ~1.5 s (several bars of 808 at 120 bpm). */
 async function peakLevel(page: Page): Promise<number> {
   let peak = 0;
   for (let i = 0; i < 30; i++) {
@@ -75,6 +79,19 @@ async function peakLevel(page: Page): Promise<number> {
     await page.waitForTimeout(50);
   }
   return peak;
+}
+
+const KIT_808 = '[data-kit="samples808"]';
+
+/** Grid steps lit, as one string, to tell patterns apart. */
+const gridOf = (page: Page) =>
+  page.locator('mono-step-grid .st').evaluateAll((keys) => keys.map((k) => (k.classList.contains('a') ? 1 : 0)).join(''));
+
+/** Waits until the master has been silent for a while (tails rung out). */
+async function waitSilence(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.__mono.level()), { timeout: 6000, intervals: [200] })
+    .toBeLessThan(0.001);
 }
 
 async function addDrum(page: Page): Promise<void> {
@@ -102,8 +119,8 @@ test('arranca, agrega DRUM, despierta el audio con el toque y suena sin errores'
   expect(log.resumed[0]).toEqual({ active: true }); // and resumed inside it
 
   // The manifest arrives and the kit's samples play through the master.
-  await expect(page.locator('#kit')).toBeEnabled();
-  await expect(page.locator('#lcd')).toHaveText('DRUM · 909 · SEMILLA 4D4F4E4F');
+  await expect(page.locator(KIT_808)).toBeEnabled();
+  await expect(page.locator('#lcd')).toHaveText('DRUM · 808');
   expect(await peakLevel(page)).toBeGreaterThan(0.01);
 
   // The playhead follows the audio clock and DRUM lights up on its hits.
@@ -128,7 +145,7 @@ test('detener silencia y quitar DRUM corta su cable sin errores', async ({ page 
   const errors = watchErrors(page);
   await page.goto('/');
   await addDrum(page);
-  await expect(page.locator('#kit')).toBeEnabled();
+  await expect(page.locator(KIT_808)).toBeEnabled();
   expect(await peakLevel(page)).toBeGreaterThan(0.01);
 
   await page.click('#play'); // stop
@@ -147,11 +164,11 @@ test('detener silencia y quitar DRUM corta su cable sin errores', async ({ page 
 test('si falla un sample la app sigue: aviso en el display y respaldo sintético', async ({ page }) => {
   // The browser itself logs the 404 of the missing file; that one is expected.
   const errors = watchErrors(page, [/Failed to load resource.*404/]);
-  await page.route('**/samples/drums/909samples/kick-1.wav', (route) => route.fulfill({ status: 404 }));
+  await page.route('**/samples/drums/samples808/kick-long.wav', (route) => route.fulfill({ status: 404 }));
   await page.goto('/');
   await addDrum(page);
 
-  await expect(page.locator('#lcd')).toHaveText('DRUM · FALTA kick-1.wav');
+  await expect(page.locator('#lcd')).toHaveText('DRUM · FALTA kick-long.wav');
   await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
   // Still playing: the other kicks and rows from samples, and sound comes out.
   expect(await peakLevel(page)).toBeGreaterThan(0.01);
@@ -167,7 +184,8 @@ test('sin manifiesto: todas las filas con voz sintética y aviso', async ({ page
   await page.goto('/');
   await addDrum(page);
   await expect(page.locator('#lcd')).toHaveText('DRUM · FALTA manifest.json');
-  await expect(page.locator('#kit')).toBeDisabled();
+  await expect(page.locator('[data-kit]')).toHaveCount(8);
+  for (const key of await page.locator('[data-kit]').all()) await expect(key).toBeDisabled();
   expect(await peakLevel(page)).toBeGreaterThan(0.01); // the fallback voices
   expect(errors).toEqual([]);
 });
@@ -176,32 +194,57 @@ test.describe('controles de DRUM', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await addDrum(page);
-    await expect(page.locator('#kit')).toBeEnabled();
+    await expect(page.locator(KIT_808)).toBeEnabled();
   });
 
-  test('KIT recorre los kits del manifiesto', async ({ page }) => {
-    const lcd = page.locator('#lcd');
-    await expect(lcd).toContainText('· 909 ·');
-    for (const label of ['FREAK', 'GLITCH', '808', 'TRIP', '909']) {
-      await page.click('#kit');
-      await expect(lcd).toContainText(`· ${label} ·`);
+  test('KIT: una tecla por kit, siempre a la vista, LED en el activo', async ({ page }) => {
+    const keys = page.locator('[data-kit]');
+    await expect(keys).toHaveText(['808', 'FREAK', 'GLITCH', 'TRIP', 'ACID', 'HOUSE', 'LAB', 'LINNROCK']);
+    for (const key of await keys.all()) await expect(key).toBeVisible();
+    await expect(page.locator('[data-kit].on')).toHaveAttribute('data-kit', 'samples808');
+
+    for (const [id, label] of [
+      ['freaksamples', 'FREAK'],
+      ['glitch', 'GLITCH'],
+      ['trip', 'TRIP'],
+      ['acid', 'ACID'],
+      ['house', 'HOUSE'],
+      ['lab', 'LAB'],
+      ['linnrock', 'LINNROCK'],
+      ['samples808', '808'],
+    ] as const) {
+      await page.click(`[data-kit="${id}"]`);
+      await expect(page.locator('#lcd')).toHaveText(`DRUM · ${label}`);
+      await expect(page.locator('[data-kit].on')).toHaveCount(1);
+      await expect(page.locator('[data-kit].on')).toHaveAttribute('data-kit', id);
+      await expect(page.locator(`[data-kit="${id}"]`)).toHaveAttribute('aria-pressed', 'true');
     }
   });
 
-  test('DADO cambia la semilla y el patrón', async ({ page }) => {
-    const lcd = page.locator('#lcd');
-    const grid = () =>
-      page.locator('mono-step-grid .st').evaluateAll((keys) => keys.map((k) => k.classList.contains('a')).join());
-    const before = await grid();
-    await page.click('#dice');
-    await expect(lcd).not.toHaveText('DRUM · 909 · SEMILLA 4D4F4E4F');
-    await expect(lcd).toHaveText(/^DRUM · 909 · SEMILLA [0-9A-F]{8}$/);
-    expect(await grid()).not.toBe(before);
+  test('KIT: tocar un kit con todo detenido hace sonar su kick', async ({ page }) => {
+    await page.click('#play'); // stop
+    await waitSilence(page);
+    await page.click('[data-kit="trip"]');
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await waitSilence(page); // one hit only: the pattern does not start
+  });
+
+  // Bug fixed: at the starting CAOS every seed gave the same pattern, so after the
+  // first press the key did nothing.
+  test('RNDM genera un patrón nuevo en cada toque', async ({ page }) => {
+    await expect(page.locator('#rndm')).toHaveText('RNDM');
+    let previous = await gridOf(page);
+    for (let press = 0; press < 4; press++) {
+      await page.click('#rndm');
+      const next = await gridOf(page);
+      expect(next, `press ${press + 1}`).not.toBe(previous);
+      previous = next;
+    }
+    await expect(page.locator('#lcd')).toHaveText('DRUM · 808');
   });
 
   test('CAOS regenera el patrón con la misma semilla', async ({ page }) => {
-    const grid = () =>
-      page.locator('mono-step-grid .st').evaluateAll((keys) => keys.map((k) => k.classList.contains('a')).join());
+    const grid = () => gridOf(page);
     const before = await grid();
     const caos = page.locator('mono-knob[big] .kn');
     const box = (await caos.boundingBox())!;
@@ -211,10 +254,11 @@ test.describe('controles de DRUM', () => {
     await page.mouse.up();
     expect(await grid()).not.toBe(before);
     await expect(page.locator('#lcd')).toHaveText(/^DRUM CAOS \d+$/);
-    // Same seed: once the reading clears, the display still shows the initial one.
+    // Same seed, which stays internal: once the reading clears, the display shows the kit.
+    expect(await page.evaluate(() => window.__mono.store.getState().drum.seed)).toBe(0x4d4f4e4f);
     await page.click('#nd-master');
     await page.click('#nd-drum');
-    await expect(page.locator('#lcd')).toHaveText('DRUM · 909 · SEMILLA 4D4F4E4F');
+    await expect(page.locator('#lcd')).toHaveText('DRUM · 808');
   });
 
   test('las perillas de fila mueven tono y volumen y se leen en el display', async ({ page }) => {
@@ -227,4 +271,118 @@ test.describe('controles de DRUM', () => {
     await expect(page.locator('#lcd')).toHaveText('DRUM SNR VOL 0');
     await expect(vol).toHaveAttribute('aria-valuenow', '0');
   });
+});
+
+/** Highest value of a probe over `ms`, sampled every 5 ms inside the page (clicks are short). */
+const peakOf = (page: Page, probe: 'level' | 'clickLevel', ms = 1500): Promise<number> =>
+  page.evaluate(
+    ([name, duration]) =>
+      new Promise<number>((resolve) => {
+        let peak = 0;
+        const timer = setInterval(() => (peak = Math.max(peak, window.__mono[name]())), 5);
+        setTimeout(() => {
+          clearInterval(timer);
+          resolve(peak);
+        }, duration);
+      }),
+    [probe, ms] as const,
+  );
+
+test.describe('metrónomo del MASTER', () => {
+  test('CLICK suena en cada tiempo, directo a la salida, con LED y volumen', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await page.click('#play'); // only MASTER on the canvas: nothing else makes sound
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+
+    const click = page.locator('#click');
+    await expect(click).toHaveText('CLICK');
+    await expect(click).toHaveAttribute('aria-pressed', 'false');
+    expect(await peakOf(page, 'clickLevel', 1100)).toBe(0);
+
+    await click.click();
+    await expect(click).toHaveAttribute('aria-pressed', 'true');
+    // The LED flashes with the pulses (stronger on beat 1) and goes dark in between.
+    await expect(page.locator('#click.on')).toHaveCount(1, { timeout: 2000 });
+    await expect(page.locator('#click:not(.on)')).toHaveCount(1, { timeout: 2000 });
+    // Beat 1 lasts one step (125 ms) per bar: sampled inside the page, every 10 ms, over a bar and a half.
+    const seen = await page.evaluate(
+      () =>
+        new Promise<{ accent: number; beat: number }>((resolve) => {
+          const key = () =>
+            document.querySelector('mono-app')?.shadowRoot?.querySelector('mono-panel')?.shadowRoot?.querySelector('#click');
+          const seen = { accent: 0, beat: 0 };
+          const timer = setInterval(() => {
+            const classes = key()?.classList;
+            if (classes?.contains('acc')) seen.accent++;
+            else if (classes?.contains('on')) seen.beat++;
+          }, 10);
+          setTimeout(() => {
+            clearInterval(timer);
+            resolve(seen);
+          }, 3000);
+        }),
+    );
+    expect(seen.accent).toBeGreaterThan(0);
+    expect(seen.beat).toBeGreaterThan(0);
+
+    // It sounds, and not through the master (whose meter stays silent).
+    expect(await peakOf(page, 'clickLevel')).toBeGreaterThan(0.05);
+    expect(await peakOf(page, 'level')).toBeLessThan(0.001);
+
+    // VOL to zero silences it, and the display reads the knob.
+    const vol = page.locator('section[data-section="metronome"] mono-knob .kn');
+    const box = (await vol.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + 200, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.locator('#lcd')).toHaveText('MASTER CLICK VOL 0');
+    await page.waitForTimeout(200);
+    expect(await peakOf(page, 'clickLevel', 1100)).toBeLessThan(0.0005);
+
+    // Off: the LED stays dark.
+    await click.click();
+    await expect(click).toHaveAttribute('aria-pressed', 'false');
+    await page.waitForTimeout(1100);
+    await expect(page.locator('#click.on')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('CLICK sigue sonando con DRUM y al quitar todos los nodos', async ({ page }) => {
+    await page.goto('/');
+    await page.click('#click');
+    await addDrum(page);
+    await expect(page.locator(KIT_808)).toBeEnabled();
+    expect(await peakOf(page, 'clickLevel')).toBeGreaterThan(0.05);
+    await page.click('#rm');
+    expect(await peakOf(page, 'clickLevel')).toBeGreaterThan(0.05);
+  });
+});
+
+test('la palabra semilla no aparece en la interfaz', async ({ page }) => {
+  await page.goto('/');
+  await addDrum(page);
+  await expect(page.locator(KIT_808)).toBeEnabled();
+  await page.click('#rndm');
+  const texts = await page.evaluate(() => {
+    const out: string[] = [];
+    const walk = (root: Document | ShadowRoot): void => {
+      for (const el of root.querySelectorAll('*')) {
+        if (el.tagName === 'STYLE' || el.tagName === 'SCRIPT') continue;
+        for (const attr of ['aria-label', 'title', 'placeholder']) {
+          const value = el.getAttribute(attr);
+          if (value) out.push(value);
+        }
+        for (const node of el.childNodes) {
+          if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) out.push(node.textContent.trim());
+        }
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    };
+    walk(document);
+    return out.join(' | ');
+  });
+  expect(texts).toContain('RNDM');
+  expect(texts).not.toMatch(/semilla|seed/i);
 });

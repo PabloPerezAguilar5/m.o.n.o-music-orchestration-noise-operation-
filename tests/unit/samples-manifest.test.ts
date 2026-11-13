@@ -65,13 +65,13 @@ describe('drum samples manifest', () => {
     });
   }
 
-  it('uses clap for PRC in 909samples and woodblock in samples808', () => {
+  it('uses woodblock for PRC in samples808 and the pedal hat in house (it has no perc sample)', () => {
     const perc = (id: string) =>
       manifest.kits
         .find((kit) => kit.id === id)
         ?.files.filter((entry) => entry.row === 'perc')
         .map((entry) => entry.file);
-    expect(perc('909samples')).toEqual(['clap.wav']);
     expect(perc('samples808')).toEqual(['woodblock.wav']);
+    expect(perc('house')).toEqual(['hat-pedal.wav']);
   });
 });

@@ -1,4 +1,5 @@
 import { INITIAL_AUDIO_STATUS, type AudioScene, type AudioStatus } from '../core/audio-scene';
+import { clickAt, type Click } from '../core/metronome';
 import { LookaheadScheduler } from '../core/scheduler';
 import type { AudioBackend, StatusListener, StepListener } from './backend';
 
@@ -9,6 +10,10 @@ import type { AudioBackend, StatusListener, StepListener } from './backend';
  */
 export class SilentBackend implements AudioBackend {
   readonly scenes: AudioScene[] = [];
+  /** Kits asked to be heard, in order. */
+  readonly auditions: string[] = [];
+  /** Metronome clicks, with the time the scheduler gave their step. */
+  readonly clicks: { step: number; time: number; click: Click }[] = [];
   unlocks = 0;
   private readonly scheduler = new LookaheadScheduler();
   private readonly statusListeners = new Set<StatusListener>();
@@ -38,6 +43,10 @@ export class SilentBackend implements AudioBackend {
     this.scheduler.setBpm(scene.bpm);
   }
 
+  audition(kit: string): void {
+    this.auditions.push(kit);
+  }
+
   onStatus(listener: StatusListener): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
@@ -51,8 +60,10 @@ export class SilentBackend implements AudioBackend {
   /** Moves time to `now` (seconds) and delivers the steps that became due. */
   advanceTo(now: number): void {
     this.now = now;
-    for (const { step } of this.scheduler.advance(now)) {
+    for (const { step, time } of this.scheduler.advance(now)) {
       const scene = this.scenes.at(-1);
+      const click = scene?.metronome.on ? clickAt(step) : null;
+      if (click) this.clicks.push({ step, time, click });
       const drumHits =
         scene !== undefined &&
         scene.nodes.includes('drum') &&

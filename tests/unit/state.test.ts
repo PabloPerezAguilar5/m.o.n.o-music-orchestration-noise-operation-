@@ -101,9 +101,9 @@ describe('Store', () => {
   });
 
   describe('DRUM', () => {
-    it('starts with the prototype pattern, seed and the 909 kit', () => {
+    it('starts with the prototype pattern, seed and the 808 kit', () => {
       const { drum } = store.getState();
-      expect(drum.kit).toBe('909samples');
+      expect(drum.kit).toBe('samples808');
       expect(drum.seed).toBe(INITIAL_SEED);
       expect(drum.generation).toBe(0);
       expect(gridFromPattern(drum.pattern)).toEqual(DEFAULT_PATTERNS.drum);
@@ -118,16 +118,35 @@ describe('Store', () => {
       expect(store.getState().drum.pattern[0]?.[1]).toEqual([]);
     });
 
-    it('rolls the dice: new seed, new generation, pattern from that seed and CAOS', () => {
-      store.rollDice(1234);
+    it('RNDM: new seed kept in the state, new generation, pattern from that seed and CAOS', () => {
+      store.randomize(() => 1234);
       const { drum, params } = store.getState();
       expect(drum.seed).toBe(1234);
       expect(drum.generation).toBe(1);
       expect(drum.pattern).toEqual(generateDrumPattern(1234, params.drum.chaos!));
     });
 
+    // Bug fixed: at the starting CAOS every seed gave the same grid, so after the
+    // first press RNDM changed nothing on screen or in the sound.
+    it('RNDM changes the pattern on every press, at the starting CAOS', () => {
+      let seed = 1;
+      for (let press = 0; press < 20; press++) {
+        const before = store.getState().drum.pattern;
+        store.randomize(() => (seed += 7919));
+        expect(gridFromPattern(store.getState().drum.pattern)).not.toEqual(gridFromPattern(before));
+      }
+    });
+
+    it('RNDM skips a seed that would light the same steps', () => {
+      store.randomize(() => 1234);
+      const seeds = [1234, 1234, 5678];
+      store.randomize(() => seeds.shift()!);
+      expect(store.getState().drum.seed).toBe(5678);
+      expect(seeds).toEqual([]);
+    });
+
     it('regenerates from the same seed when CAOS moves', () => {
-      store.rollDice(99);
+      store.randomize(() => 99);
       store.setParam('drum', 'chaos', 0.9);
       const { drum } = store.getState();
       expect(drum.seed).toBe(99);
@@ -142,15 +161,34 @@ describe('Store', () => {
       expect(store.getState().params.drum.kickVolume).toBe(0.3);
     });
 
-    it('cycles kits once the manifest is known', () => {
-      store.nextKit();
-      expect(store.getState().drum.kit).toBe('909samples');
-      store.setAudioStatus({ ...store.getState().audio, kits: ['909samples', 'glitch', 'trip'] });
-      store.nextKit();
+    it('selects a kit only once the manifest lists it', () => {
+      store.selectKit('glitch');
+      expect(store.getState().drum.kit).toBe('samples808');
+      store.setAudioStatus({ ...store.getState().audio, kits: ['samples808', 'glitch', 'trip'] });
+      store.selectKit('glitch');
       expect(store.getState().drum.kit).toBe('glitch');
-      store.nextKit();
-      store.nextKit();
-      expect(store.getState().drum.kit).toBe('909samples');
+      store.selectKit('nope');
+      expect(store.getState().drum.kit).toBe('glitch');
+      const before = store.getState();
+      store.selectKit('glitch');
+      expect(store.getState()).toBe(before);
+    });
+  });
+
+  describe('metronome', () => {
+    it('starts off and toggles', () => {
+      expect(store.getState().metronome.on).toBe(false);
+      store.toggleMetronome();
+      expect(store.getState().metronome.on).toBe(true);
+      store.toggleMetronome();
+      expect(store.getState().metronome.on).toBe(false);
+    });
+
+    it('clamps its volume to 0..1', () => {
+      store.setMetronomeVolume(2);
+      expect(store.getState().metronome.volume).toBe(1);
+      store.setMetronomeVolume(-1);
+      expect(store.getState().metronome.volume).toBe(0);
     });
   });
 

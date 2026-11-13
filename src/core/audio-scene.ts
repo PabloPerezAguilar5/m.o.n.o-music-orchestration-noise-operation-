@@ -16,7 +16,7 @@ export interface DrumRowScene {
 export interface DrumScene {
   readonly kit: string;
   readonly seed: number;
-  /** Changes whenever the pattern is regenerated (dice, CAOS). Hand edits keep it. */
+  /** Changes whenever the pattern is regenerated (RNDM, CAOS). Hand edits keep it. */
   readonly generation: number;
   readonly pattern: DrumPattern;
   readonly rows: Readonly<Record<DrumRow, DrumRowScene>>;
@@ -32,6 +32,13 @@ export interface AudioScene {
     readonly drumLevel: number;
   };
   readonly drum: DrumScene;
+  readonly metronome: MetronomeScene;
+}
+
+export interface MetronomeScene {
+  readonly on: boolean;
+  /** Knob value, 0..1. */
+  readonly volume: number;
 }
 
 export type AudioState = 'idle' | 'starting' | 'running' | 'blocked' | 'unavailable';

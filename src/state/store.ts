@@ -1,5 +1,5 @@
 import type { AudioStatus } from '../core/audio-scene';
-import { generateDrumPattern, toggleDrumStep } from '../core/drum-patterns';
+import { generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
 import { MACRO_PARAM, type DistType, type GridPatternId, type NodeId } from '../core/nodes';
 import { toggleStep } from '../core/patterns';
@@ -7,6 +7,9 @@ import { BPM_NUDGE, clampBpm } from '../core/transport';
 import { Emitter, type Source } from './emitter';
 import { createInitialState } from './initial';
 import type { AppState } from './types';
+
+/** Seeds RNDM tries before settling for one that lights the same steps (practically never). */
+const RANDOMIZE_ATTEMPTS = 16;
 
 /** Application state plus the actions that change it. State objects are never mutated. */
 export class Store extends Emitter implements Source<AppState> {
@@ -90,19 +93,36 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ drum: { ...drum, pattern } });
   }
 
-  /** Dice: a new seed and the pattern it generates at the current CAOS. */
-  rollDice(seed: number): void {
-    this.update({ drum: this.regenerated(seed >>> 0, this.state.params.drum[MACRO_PARAM] ?? 0) });
+  /**
+   * RNDM: a pattern from a new seed at the current CAOS, always different on the step
+   * grid from the one playing. Seeds that would light the same steps are skipped.
+   */
+  randomize(nextSeed: () => number): void {
+    const chaos = this.state.params.drum[MACRO_PARAM] ?? 0;
+    const current = this.state.drum.pattern;
+    let drum = this.regenerated(nextSeed() >>> 0, chaos);
+    for (let attempt = 1; attempt < RANDOMIZE_ATTEMPTS && sameGrid(drum.pattern, current); attempt++) {
+      drum = this.regenerated(nextSeed() >>> 0, chaos);
+    }
+    this.update({ drum });
   }
 
-  /** Next kit from the manifest, wrapping around. No-op until the manifest has loaded. */
-  nextKit(): void {
-    const { kits } = this.state.audio;
-    if (kits.length === 0) return;
-    const index = kits.indexOf(this.state.drum.kit);
-    const kit = kits[(index + 1) % kits.length]!;
-    if (kit === this.state.drum.kit) return;
+  /** Picks a kit from the manifest. No-op for a kit the manifest does not list. */
+  selectKit(kit: string): void {
+    if (!this.state.audio.kits.includes(kit) || kit === this.state.drum.kit) return;
     this.update({ drum: { ...this.state.drum, kit } });
+  }
+
+  toggleMetronome(): void {
+    const { metronome } = this.state;
+    this.update({ metronome: { ...metronome, on: !metronome.on } });
+  }
+
+  setMetronomeVolume(volume: number): void {
+    const { metronome } = this.state;
+    const next = clamp(volume, 0, 1);
+    if (next === metronome.volume) return;
+    this.update({ metronome: { ...metronome, volume: next } });
   }
 
   setAudioStatus(audio: AudioStatus): void {

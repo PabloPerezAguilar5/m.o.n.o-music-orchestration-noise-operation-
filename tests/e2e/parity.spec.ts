@@ -52,15 +52,41 @@ const PROTOTYPE_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>>
     }, LEAD_FROM_C),
 };
 /**
+ * 5. MASTER panel: a CLICK section (metronome on/off key with LED, VOL knob) sits
+ *    between the MASTER knobs and MACRO. Requested after stage 2. The prototype has
+ *    no metronome, so the section is hidden (visibility, not display: it keeps its
+ *    place) in the app's screenshots; the rest of the MASTER panel is still compared.
+ *    Affects initial and panel-master-all-nodes.
+ */
+const hideMetronome = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const root = document.querySelector('mono-app')?.shadowRoot?.querySelector('mono-panel')?.shadowRoot;
+    if (!root?.querySelector('section[data-section="metronome"]')) throw new Error('CLICK section not found');
+    const style = document.createElement('style');
+    style.textContent = 'section[data-section="metronome"] { visibility: hidden; }';
+    root.append(style);
+  });
+
+/** Applied to the app right before the screenshot of the named state. */
+const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  initial: hideMetronome,
+  'panel-master-all-nodes': hideMetronome,
+};
+
+/**
  * States no longer compared, and why. Still walked through, so the rest of the
  * sequence stays the same.
  *
  * 4. panel-drum (stage 2): DRUM became a real instrument. Its knobs are now TONO and
- *    VOL per row (KCK, SNR, HAT, PRC) plus a PATRÓN section with KIT and DADO, and the
- *    display shows kit and seed. The prototype has no equivalent to patch in.
+ *    VOL per row (KCK, SNR, HAT, PRC). After stage 2 the header changed again on
+ *    request: a PATRÓN section with RNDM (was DADO), a KIT section with one key per
+ *    kit (808, FREAK, GLITCH, TRIP, ACID, HOUSE, LAB, LINNROCK; two rows of four
+ *    on narrow screens) and an LED on the active one (was a single KIT key that
+ *    cycled), and the display shows only the kit (the seed is no longer shown
+ *    anywhere). The prototype has no equivalent to patch in.
  */
 const EXCLUDED_STATES: Readonly<Record<string, string>> = {
-  'panel-drum': 'DRUM panel redesigned in stage 2',
+  'panel-drum': 'DRUM panel redesigned in stage 2 and after',
 };
 
 const NODE_ORDER = ['synth', 'drum', 'bass', 'drone', 'dist', 'lfo', 'lead'] as const;
@@ -90,6 +116,7 @@ async function walk(page: Page, url: string): Promise<Map<string, Buffer>> {
   const shots = new Map<string, Buffer>();
   const shoot = async (name: string): Promise<void> => {
     if (url === PROTOTYPE_URL) await PROTOTYPE_PATCHES[name]?.(page);
+    else await APP_PATCHES[name]?.(page);
     await settle(page);
     shots.set(name, await page.screenshot());
   };

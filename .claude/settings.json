@@ -1,0 +1,20 @@
+{
+  "attribution": { "commit": "", "pr": "" },
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "deny": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git rebase:*)",
+      "Bash(gh:*)",
+      "PowerShell(git commit:*)",
+      "PowerShell(git push:*)",
+      "PowerShell(git add:*)",
+      "PowerShell(git reset:*)",
+      "PowerShell(git rebase:*)",
+      "PowerShell(gh:*)"
+    ]
+  }
+}
