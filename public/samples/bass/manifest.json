@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "types": ["note", "phrase", "arp"],
+  "sets": [
+    {
+      "id": "line",
+      "type": "phrase",
+      "files": [
+        { "file": "a-128-a.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "A" },
+        { "file": "a-128-b.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "B" },
+        { "file": "a-128-c.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "C" },
+        { "file": "a-128-d.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "D" },
+        { "file": "a-128-e.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "E" },
+        { "file": "a-128-f.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "F" },
+        { "file": "a-128-g.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "G" },
+        { "file": "b-128-a.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "A" },
+        { "file": "b-128-b.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "B" },
+        { "file": "b-128-c.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "C" },
+        { "file": "b-128-d.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "D" },
+        { "file": "b-128-e.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "E" },
+        { "file": "b-128-f.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "F" },
+        { "file": "b-128-g.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "G" }
+      ]
+    },
+    {
+      "id": "line-fx",
+      "type": "phrase",
+      "files": [
+        { "file": "a-128-a.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "A" },
+        { "file": "a-128-b.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "B" },
+        { "file": "a-128-c.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "C" },
+        { "file": "a-128-d.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "D" },
+        { "file": "a-128-e.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "E" },
+        { "file": "a-128-f.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "F" },
+        { "file": "a-128-g.wav", "variant": "a", "bars": 1, "bpm": 128, "key": "G" },
+        { "file": "b-128-a.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "A" },
+        { "file": "b-128-b.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "B" },
+        { "file": "b-128-c.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "C" },
+        { "file": "b-128-d.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "D" },
+        { "file": "b-128-e.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "E" },
+        { "file": "b-128-f.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "F" },
+        { "file": "b-128-g.wav", "variant": "b", "bars": 1, "bpm": 128, "key": "G" }
+      ]
+    },
+    {
+      "id": "arp",
+      "type": "arp",
+      "files": [
+        { "file": "a-128-a.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "A" },
+        { "file": "a-128-b.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "B" },
+        { "file": "a-128-c.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "C" },
+        { "file": "a-128-d.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "D" },
+        { "file": "a-128-e.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "E" },
+        { "file": "a-128-f.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "F" },
+        { "file": "a-128-g.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "G" },
+        { "file": "b-128-a.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "A" },
+        { "file": "b-128-b.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "B" },
+        { "file": "b-128-c.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "C" },
+        { "file": "b-128-d.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "D" },
+        { "file": "b-128-e.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "E" },
+        { "file": "b-128-f.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "F" },
+        { "file": "b-128-g.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "G" }
+      ]
+    },
+    {
+      "id": "sweep",
+      "type": "phrase",
+      "files": [
+        { "file": "dry-128-a.wav", "variant": "dry", "bars": 4, "bpm": 128, "key": "A" },
+        { "file": "dry-128-b.wav", "variant": "dry", "bars": 4, "bpm": 128, "key": "B" },
+        { "file": "dry-128-c.wav", "variant": "dry", "bars": 4, "bpm": 128, "key": "C" },
+        { "file": "dry-128-d.wav", "variant": "dry", "bars": 4, "bpm": 128, "key": "D" },
+        { "file": "dry-128-e.wav", "variant": "dry", "bars": 4, "bpm": 128, "key": "E" },
+        { "file": "dry-128-f.wav", "variant": "dry", "bars": 4, "bpm": 128, "key": "F" },
+        { "file": "dry-128-g.wav", "variant": "dry", "bars": 4, "bpm": 128, "key": "G" }
+      ]
+    },
+    {
+      "id": "sweep-fx",
+      "type": "phrase",
+      "files": [
+        { "file": "a-128-a.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "A" },
+        { "file": "a-128-b.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "B" },
+        { "file": "a-128-c.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "C" },
+        { "file": "a-128-d.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "D" },
+        { "file": "a-128-e.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "E" },
+        { "file": "a-128-f.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "F" },
+        { "file": "a-128-g.wav", "variant": "a", "bars": 4, "bpm": 128, "key": "G" },
+        { "file": "b-128-a.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "A" },
+        { "file": "b-128-b.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "B" },
+        { "file": "b-128-c.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "C" },
+        { "file": "b-128-d.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "D" },
+        { "file": "b-128-e.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "E" },
+        { "file": "b-128-f.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "F" },
+        { "file": "b-128-g.wav", "variant": "b", "bars": 4, "bpm": 128, "key": "G" }
+      ]
+    },
+    {
+      "id": "note",
+      "type": "note",
+      "files": []
+    }
+  ]
+}
