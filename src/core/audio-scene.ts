@@ -41,6 +41,8 @@ export interface BassScene {
   readonly drive: number;
   readonly wave: 'saw' | 'square';
   readonly sub: boolean;
+  /** SLIDE ON/OFF. */
+  readonly slides: boolean;
 }
 
 export interface SynthScene {

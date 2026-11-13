@@ -1,7 +1,14 @@
 import { css, html, LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
-import { BASS_MODES, gridFromBassPattern, type BassMode, type BassPattern } from '../../core/bass-patterns';
+import {
+  BASS_MODES,
+  BASS_SLIDE_ROW,
+  bassDimmedCells,
+  gridFromBassPattern,
+  type BassMode,
+  type BassPattern,
+} from '../../core/bass-patterns';
 import { kitLabel } from '../../core/drum-kits';
 import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
 import { clickAt } from '../../core/metronome';
@@ -11,6 +18,7 @@ import { randomSeed } from '../../core/random';
 import { ROOTS } from '../../core/scales';
 import {
   gridFromSynthPattern,
+  synthDimmedCells,
   SYNTH_DUR_ROW,
   SYNTH_MODES,
   synthDurLabels,
@@ -369,7 +377,7 @@ export class MonoPanel extends LitElement {
   private readonly key = new Selector(this, store, (s) => s.key);
   private readonly synth = new Selector(this, store, (s) => s.synth);
   /** On/off view of the SYNTH pattern, recomputed only when the pattern changes. */
-  private synthGrid: { pattern: SynthPattern; grid: Pattern } | null = null;
+  private synthGrid: { pattern: SynthPattern; grid: Pattern; dimmed: Pattern } | null = null;
   private readonly drone = new Selector(this, store, (s) => s.drone);
   private readonly distType = new Selector(this, store, (s) => s.distType);
   private readonly bpm = new Selector(this, store, (s) => s.transport.bpm);
@@ -379,7 +387,7 @@ export class MonoPanel extends LitElement {
   private readonly metronome = new Selector(this, store, (s) => s.metronome);
   private readonly bass = new Selector(this, store, (s) => s.bass);
   /** On/off view of the BASS pattern, recomputed only when the pattern changes. */
-  private bassGrid: { pattern: BassPattern; grid: Pattern } | null = null;
+  private bassGrid: { pattern: BassPattern; slides: boolean; grid: Pattern; dimmed: Pattern } | null = null;
   /** On/off view of the DRUM pattern, recomputed only when the pattern changes. */
   private drumGrid: { pattern: DrumPattern; grid: Pattern } | null = null;
 
@@ -477,14 +485,23 @@ export class MonoPanel extends LitElement {
 
   /** DRUM: RNDM makes a new pattern. */
   private patternKeys(): TemplateResult {
+    // Stacked: with eight kit keys in one row, two keys side by side would not fit at 1280 px.
     return html`<section data-section="pattern">
       <h6>${TEXT.patternSection}</h6>
-      <div class="kk">
+      <div class="kk stack">
         <button class="pk" id="rndm" aria-label=${TEXT.rndmHint} @click=${this.onRandomize}>
           ${TEXT.rndm}
         </button>
+        ${this.clearKey()}
       </div>
     </section>`;
+  }
+
+  /** BORRAR: every step of the selected node's pattern goes blank. */
+  private clearKey(): TemplateResult {
+    return html`<button class="pk" id="clear" aria-label=${TEXT.clearHint} @click=${this.onClear}>
+      ${TEXT.clear}
+    </button>`;
   }
 
   /** DRUM: one key per kit, the active one with its LED on. Off until the manifest is in. */
@@ -543,14 +560,35 @@ export class MonoPanel extends LitElement {
     return this.drumGrid.grid;
   }
 
-  private bassGridFor(pattern: BassPattern): Pattern {
-    if (this.bassGrid?.pattern !== pattern) this.bassGrid = { pattern, grid: gridFromBassPattern(pattern) };
-    return this.bassGrid.grid;
+  private bassGridFor(pattern: BassPattern, slides: boolean): { grid: Pattern; dimmed: Pattern } {
+    const cached = this.bassGrid;
+    if (cached?.pattern !== pattern || cached.slides !== slides) {
+      this.bassGrid = {
+        pattern,
+        slides,
+        grid: gridFromBassPattern(pattern),
+        dimmed: bassDimmedCells(pattern, slides),
+      };
+    }
+    return this.bassGrid!;
   }
 
-  private synthGridFor(pattern: SynthPattern): Pattern {
-    if (this.synthGrid?.pattern !== pattern) this.synthGrid = { pattern, grid: gridFromSynthPattern(pattern) };
-    return this.synthGrid.grid;
+  private synthGridFor(pattern: SynthPattern): { grid: Pattern; dimmed: Pattern } {
+    if (this.synthGrid?.pattern !== pattern) {
+      this.synthGrid = { pattern, grid: gridFromSynthPattern(pattern), dimmed: synthDimmedCells(pattern) };
+    }
+    return this.synthGrid;
+  }
+
+  /** The step grid of a sequenced node: on/off cells, dimmed cells, where the gap goes. */
+  private gridOf(id: NodeId): { grid: Pattern; dimmed: Pattern | null; split: number | null } {
+    if (id === 'drum') return { grid: this.drumGridFor(this.drum.value.pattern), dimmed: null, split: null };
+    if (id === 'bass') {
+      const { pattern, slides } = this.bass.value;
+      return { ...this.bassGridFor(pattern, slides), split: BASS_SLIDE_ROW };
+    }
+    if (id === 'synth') return { ...this.synthGridFor(this.synth.value.pattern), split: SYNTH_DUR_ROW };
+    return { grid: [], dimmed: null, split: null };
   }
 
   /**
@@ -579,7 +617,7 @@ export class MonoPanel extends LitElement {
       </section>`,
       this.keySection(),
       this.ledKeys('mode', TEXT.modeSection, 'modes', BASS_MODES, BASS_MODE_LABELS, mode, (m) => this.onBassMode(m)),
-      this.diceSection(this.onBassDice),
+      this.diceSection(this.onBassDice, html`${this.slidesKey()}${this.clearKey()}`),
     ];
   }
 
@@ -592,7 +630,7 @@ export class MonoPanel extends LitElement {
       ),
       this.keySection(),
       this.ledKeys('mode', TEXT.modeSection, 'quad', SYNTH_MODES, SYNTH_MODE_LABELS, mode, (m) => this.onSynthMode(m)),
-      this.diceSection(this.onSynthDice),
+      this.diceSection(this.onSynthDice, this.clearKey()),
     ];
   }
 
@@ -645,13 +683,29 @@ export class MonoPanel extends LitElement {
     </section>`;
   }
 
-  private diceSection(onDice: () => void): TemplateResult {
+  /** PATRÓN: DICE, plus any extra keys (BASS: SLIDE ON/OFF). */
+  private diceSection(onDice: () => void, extra: TemplateResult | typeof nothing = nothing): TemplateResult {
     return html`<section data-section="pattern">
       <h6>${TEXT.patternSection}</h6>
       <div class="kk">
         <button class="pk" id="dice" aria-label=${TEXT.diceHint} @click=${onDice}>${TEXT.dice}</button>
+        ${extra}
       </div>
     </section>`;
+  }
+
+  /** SLIDE ON/OFF: LED on while slides play; off keeps the marks but ignores them. */
+  private slidesKey(): TemplateResult {
+    const on = this.bass.value.slides;
+    return html`<button
+      class=${classMap({ pk: true, led: true, on })}
+      id="slides"
+      aria-label=${TEXT.slidesHint}
+      aria-pressed=${on}
+      @click=${this.onSlides}
+    >
+      ${TEXT.slides}
+    </button>`;
   }
 
   private knob(param: string, label: string, value: number, big: boolean): TemplateResult {
@@ -667,20 +721,18 @@ export class MonoPanel extends LitElement {
   /** The performance surface under the knobs. */
   private zone(id: NodeId): TemplateResult {
     switch (NODE_SPECS[id].zone) {
-      case 'sequencer':
+      case 'sequencer': {
+        const { grid, dimmed, split } = this.gridOf(id);
         return html`<mono-step-grid
           .rows=${this.rowLabels(id)}
-          .pattern=${id === 'drum'
-            ? this.drumGridFor(this.drum.value.pattern)
-            : id === 'bass'
-              ? this.bassGridFor(this.bass.value.pattern)
-              : id === 'synth'
-                ? this.synthGridFor(this.synth.value.pattern)
-                : []}
+          .pattern=${grid}
+          .dimmed=${dimmed}
+          .split=${split}
           .texts=${id === 'synth' ? { row: SYNTH_DUR_ROW, values: synthDurLabels(this.synth.value.pattern) } : null}
           .step=${this.step.value}
           @step-toggle=${this.onStepToggle}
         ></mono-step-grid>`;
+      }
       case 'xy':
         return html`<mono-xy-pad
           .x=${this.drone.value.x}
@@ -737,6 +789,18 @@ export class MonoPanel extends LitElement {
 
   private readonly onWave = (): void => {
     store.toggleBassWave();
+    pulse('bass', PULSE_MS.type);
+  };
+
+  private readonly onClear = (): void => {
+    const id = this.selected.value;
+    store.clearPattern(id);
+    pulse(id, PULSE_MS.type);
+    this.reading = null;
+  };
+
+  private readonly onSlides = (): void => {
+    store.toggleBassSlides();
     pulse('bass', PULSE_MS.type);
   };
 

@@ -91,6 +91,7 @@ export function createInitialState(): AppState {
       pattern: DEFAULT_BASS_PATTERN,
       wave: 'saw',
       sub: false,
+      slides: true,
     },
     // Starts with the prototype's NOTA steps; DICE replaces it.
     synth: {

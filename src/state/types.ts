@@ -44,6 +44,8 @@ export interface BassState {
   readonly wave: BassWave;
   /** Sub oscillator one octave down. */
   readonly sub: boolean;
+  /** SLIDE ON/OFF: when off, slide marks are kept but not played. */
+  readonly slides: boolean;
 }
 
 export interface SynthState {

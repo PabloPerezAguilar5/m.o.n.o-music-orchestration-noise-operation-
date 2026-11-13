@@ -1,7 +1,8 @@
 /**
  * SYNTH presets: the character of the sound, on top of which the six knobs act. A
  * preset does not move the knobs; it sets what they do not reach (filter envelope,
- * amplifier shape, drive, octave) and scales ATAQUE and RELEASE.
+ * amplifier shape, drive, octave), scales ATAQUE and RELEASE, and shifts ONDA, RESO and
+ * DETUNE from wherever the knobs are.
  */
 
 export const SYNTH_PRESETS = ['pluck', 'pad', 'stab', 'glass'] as const;
@@ -18,19 +19,89 @@ export interface SynthCharacter {
   /** Multipliers of the ATAQUE and RELEASE knob times. */
   readonly attackScale: number;
   readonly releaseScale: number;
-  /** Added to CUTOFF (0..1). */
+  /** Added to the knobs (0..1 scale): CUTOFF, ONDA, RESO, DETUNE. */
   readonly brightness: number;
+  readonly waveShift: number;
+  readonly resonanceShift: number;
+  readonly detuneShift: number;
   /** Semitones. */
   readonly transpose: number;
+  /**
+   * Output trim 0..1. Sustained, driven sounds (STAB) come out much louder than ones that
+   * decay (PLUCK); this keeps the four at a similar loudness in the mix.
+   */
+  readonly level: number;
 }
 
 export const SYNTH_CHARACTERS: Readonly<Record<SynthPreset, SynthCharacter>> = {
-  // Short and bright: the filter snaps shut, nothing sustains.
-  pluck: { envMod: 0.65, filterDecay: 0.18, ampDecay: 0.3, sustain: 0, drive: 0.1, attackScale: 1, releaseScale: 1, brightness: 0, transpose: 0 },
-  // Slow and wide: soft attack, long tail, the filter barely moves.
-  pad: { envMod: 0.15, filterDecay: 1.5, ampDecay: 1.5, sustain: 0.85, drive: 0, attackScale: 12, releaseScale: 3, brightness: -0.05, transpose: 0 },
-  // Short chord hits with bite.
-  stab: { envMod: 0.5, filterDecay: 0.12, ampDecay: 0.18, sustain: 0.25, drive: 0.35, attackScale: 0.5, releaseScale: 0.6, brightness: 0.05, transpose: 0 },
-  // An octave up, open and ringing.
-  glass: { envMod: 0.4, filterDecay: 0.5, ampDecay: 0.9, sustain: 0.35, drive: 0, attackScale: 1, releaseScale: 1.5, brightness: 0.12, transpose: 12 },
+  /**
+   * A plucked string: starts dark, the filter snaps open and closes fast with a little
+   * resonance, the level dies away whether the note is held or not. Narrow, no drive.
+   */
+  pluck: {
+    envMod: 0.8,
+    filterDecay: 0.12,
+    ampDecay: 0.25,
+    sustain: 0,
+    drive: 0,
+    attackScale: 1,
+    releaseScale: 1,
+    brightness: -0.15,
+    waveShift: -0.2,
+    resonanceShift: 0.15,
+    detuneShift: -0.3,
+    transpose: 0,
+    level: 1,
+  },
+  /** Slow and wide: soft attack, long tail, the filter barely moves. */
+  pad: {
+    envMod: 0.15,
+    filterDecay: 1.5,
+    ampDecay: 1.5,
+    sustain: 0.85,
+    drive: 0,
+    attackScale: 12,
+    releaseScale: 3,
+    brightness: -0.05,
+    waveShift: 0,
+    resonanceShift: 0,
+    detuneShift: 0.1,
+    transpose: 0,
+    level: 0.9,
+  },
+  /**
+   * A brassy chord hit: the filter stays open (no sweep), hollow square-ish wave, wide
+   * detune and drive; full level while the step holds, then a hard stop.
+   */
+  stab: {
+    envMod: 0.03,
+    filterDecay: 0.08,
+    ampDecay: 0.05,
+    sustain: 0.8,
+    drive: 0.5,
+    attackScale: 0.3,
+    releaseScale: 0.2,
+    brightness: 0.2,
+    waveShift: 0.45,
+    resonanceShift: -0.2,
+    detuneShift: 0.35,
+    transpose: 0,
+    level: 0.5,
+  },
+  /** An octave up, open and ringing. */
+  glass: {
+    envMod: 0.4,
+    filterDecay: 0.5,
+    ampDecay: 0.9,
+    sustain: 0.35,
+    drive: 0,
+    attackScale: 1,
+    releaseScale: 1.5,
+    brightness: 0.12,
+    waveShift: 0,
+    resonanceShift: 0,
+    detuneShift: 0,
+    transpose: 12,
+    level: 0.9,
+  },
 };

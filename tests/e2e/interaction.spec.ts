@@ -239,6 +239,33 @@ test.describe('panel', () => {
     await expect(step).toHaveClass(/\ba\b/);
   });
 
+  test('la barra espaciadora reproduce y detiene', async ({ page }) => {
+    const play = page.locator('#play');
+    await expect(play).not.toHaveClass(/on/);
+    await page.keyboard.press('Space');
+    await expect(play).toHaveClass(/on/);
+    await page.keyboard.press('Space');
+    await expect(play).not.toHaveClass(/on/);
+
+    // With a key focused (RNDM, just tapped), space plays/stops and does not press it again.
+    await addNode(page, 'drum'); // starts playback
+    // The pattern only (the playhead outline leaves when playback stops).
+    const grid = () =>
+      page.locator('mono-step-grid .st').evaluateAll((keys) => keys.map((k) => k.classList.contains('a')).join());
+    await page.click('#rndm');
+    const before = await grid();
+    await page.keyboard.press('Space');
+    await expect(play).not.toHaveClass(/on/);
+    expect(await grid()).toBe(before);
+
+    // While typing the tempo, space is just a key: playback does not change.
+    await page.locator('#nd-master').click();
+    await page.locator('mono-tempo .lcd').click();
+    await page.keyboard.press('Space');
+    await expect(play).not.toHaveClass(/on/);
+    await page.keyboard.press('Escape');
+  });
+
   test('el tempo sube y baja de a 1', async ({ page }) => {
     const bpm = page.locator('#bv');
     await expect(bpm).toHaveText('120');

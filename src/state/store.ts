@@ -1,15 +1,17 @@
 import type { AudioStatus } from '../core/audio-scene';
 import {
+  EMPTY_BASS_PATTERN,
   generateBassPattern,
   sameBassGrid,
   toggleBassCell,
   type BassMode,
 } from '../core/bass-patterns';
 import { SCALE_IDS } from '../core/scales';
-import { generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
+import { EMPTY_DRUM_PATTERN, generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
 import { MACRO_PARAM, type DistType, type NodeId } from '../core/nodes';
 import {
+  EMPTY_SYNTH_PATTERN,
   generateSynthPattern,
   sameSynthGrid,
   toggleSynthCell,
@@ -125,6 +127,17 @@ export class Store extends Emitter implements Source<AppState> {
   }
 
   /** Hand edit of a DRUM step: keeps the generation, so it sounds from the next step. */
+  /**
+   * BORRAR: empties the pattern of a sequenced node (DRUM, BASS or SYNTH). Like a hand
+   * edit, it keeps the generation and goes silent from the next step; CAOS, RNDM and
+   * DICE fill it again.
+   */
+  clearPattern(id: NodeId): void {
+    if (id === 'drum') this.update({ drum: { ...this.state.drum, pattern: EMPTY_DRUM_PATTERN } });
+    else if (id === 'bass') this.update({ bass: { ...this.state.bass, pattern: EMPTY_BASS_PATTERN } });
+    else if (id === 'synth') this.update({ synth: { ...this.state.synth, pattern: EMPTY_SYNTH_PATTERN } });
+  }
+
   toggleDrumStep(row: number, col: number): void {
     const { drum } = this.state;
     const pattern = toggleDrumStep(drum.pattern, row, col);
@@ -180,6 +193,12 @@ export class Store extends Emitter implements Source<AppState> {
   toggleBassWave(): void {
     const { bass } = this.state;
     this.update({ bass: { ...bass, wave: bass.wave === 'saw' ? 'square' : 'saw' } });
+  }
+
+  /** SLIDE ON/OFF: switches every slide off (or back on) without touching the marks. */
+  toggleBassSlides(): void {
+    const { bass } = this.state;
+    this.update({ bass: { ...bass, slides: !bass.slides } });
   }
 
   toggleBassSub(): void {

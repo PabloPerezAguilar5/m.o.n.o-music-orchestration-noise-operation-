@@ -12,6 +12,9 @@ export const INITIAL_SEED = 0x4d4f4e4f;
 /** A step switched on by hand. */
 export const MANUAL_HIT: Hit = { velocity: 0.8, offset: 0 };
 
+/** A DRUM pattern with every step silent (BORRAR). */
+export const EMPTY_DRUM_PATTERN: DrumPattern = DRUM_ROWS.map(() => Array.from({ length: STEPS }, () => []));
+
 /** Converts an on/off grid to a pattern with one plain hit per active step. */
 export const patternFromGrid = (grid: Pattern): DrumPattern =>
   DRUM_ROWS.map((_, row) => (grid[row] ?? []).map((on) => (on ? [MANUAL_HIT] : [])));

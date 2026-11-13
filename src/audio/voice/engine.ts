@@ -30,6 +30,8 @@ export interface EngineParams {
   readonly release: number;
   /** Semitones added to every note (a preset's octave). */
   readonly transpose: number;
+  /** Output trim 0..1 (a preset's loudness), smoothed. */
+  readonly level: number;
 }
 
 export interface VoiceDsp {
@@ -77,6 +79,7 @@ export const DEFAULT_ENGINE_PARAMS: EngineParams = {
   sustain: 1,
   release: 0.008,
   transpose: 0,
+  level: 1,
 };
 
 export class VoiceEngine implements VoiceDsp {
@@ -85,6 +88,7 @@ export class VoiceEngine implements VoiceDsp {
   private target: EngineParams = DEFAULT_ENGINE_PARAMS;
   private readonly controls: VoiceControls;
   private drive = DEFAULT_ENGINE_PARAMS.drive;
+  private level = DEFAULT_ENGINE_PARAMS.level;
   private limiterGain = 1;
   private clock = 0;
 
@@ -174,6 +178,7 @@ export class VoiceEngine implements VoiceDsp {
       c.sub += (clamp01(p.sub) - c.sub) * k;
       c.detune += (clamp01(p.detune) - c.detune) * k;
       this.drive += (clamp01(p.drive) - this.drive) * k;
+      this.level += (clamp01(p.level) - this.level) * k;
 
       let sum = 0;
       for (const voice of this.voices) sum += voice.tick(c, timing);
@@ -183,7 +188,7 @@ export class VoiceEngine implements VoiceDsp {
       const wanted = peak > LIMIT ? LIMIT / peak : 1;
       this.limiterGain =
         wanted < this.limiterGain ? wanted : this.limiterGain + (1 - this.limiterGain) * limiterRelease;
-      out[i] = softClip(driven * this.limiterGain * this.output.gain * CLIP_HEADROOM) / CLIP_HEADROOM;
+      out[i] = softClip(driven * this.limiterGain * this.output.gain * this.level * CLIP_HEADROOM) / CLIP_HEADROOM;
       this.clock++;
     }
   }

@@ -47,11 +47,11 @@ export function synthParamsFromScene(scene: SynthScene): EngineParams {
   const preset = SYNTH_CHARACTERS[scene.preset];
   return {
     cutoff: clamp01(scene.cutoff + preset.brightness),
-    resonance: scene.resonance,
+    resonance: clamp01(scene.resonance + preset.resonanceShift),
     envMod: preset.envMod,
-    wave: scene.wave,
+    wave: clamp01(scene.wave + preset.waveShift),
     sub: 0,
-    detune: scene.detune,
+    detune: clamp01(scene.detune + preset.detuneShift),
     drive: preset.drive,
     filterDecay: preset.filterDecay,
     attack: Math.min(4, ATTACK_MIN * 2 ** (clamp01(scene.attack) * ATTACK_OCTAVES) * preset.attackScale),
@@ -59,5 +59,6 @@ export function synthParamsFromScene(scene: SynthScene): EngineParams {
     sustain: preset.sustain,
     release: Math.min(6, RELEASE_MIN * 2 ** (clamp01(scene.release) * RELEASE_OCTAVES) * preset.releaseScale),
     transpose: preset.transpose,
+    level: preset.level,
   };
 }

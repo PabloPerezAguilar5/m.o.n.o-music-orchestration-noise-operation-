@@ -11,6 +11,7 @@ import {
   SYNTH_LENGTHS,
   SYNTH_MAX_NOTES,
   SYNTH_MODES,
+  synthDimmedCells,
   synthDurLabels,
   SynthSequencer,
   toggleSynthCell,
@@ -79,6 +80,13 @@ describe('SYNTH patterns', () => {
       expect(p[0]?.notes).toEqual([0, 5, 8]);
       expect(p[0]?.notes.length).toBeLessThanOrEqual(SYNTH_MAX_NOTES);
     });
+  });
+
+  it('dims DURACIÓN on steps without notes; note rows never dim', () => {
+    const dimmed = synthDimmedCells(patternOf({ 4: { notes: [2] } }));
+    expect(dimmed[SYNTH_DUR_ROW]?.[4]).toBe(false);
+    expect(dimmed[SYNTH_DUR_ROW]?.filter(Boolean)).toHaveLength(15);
+    expect(dimmed.slice(0, SYNTH_DUR_ROW).flat().some(Boolean)).toBe(false);
   });
 
   it('DUR cycles 1, 2, 4, 8, 16 and back; bad coordinates change nothing', () => {

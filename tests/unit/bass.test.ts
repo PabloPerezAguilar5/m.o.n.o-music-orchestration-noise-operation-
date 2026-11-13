@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  bassDimmedCells,
   BASS_ACCENT_ROW,
   BASS_MODES,
   BASS_SLIDE_ROW,
@@ -174,6 +175,29 @@ describe('bass sequence', () => {
     ]);
   });
 
+  it('SLIDE OFF ignores every slide mark: each note retriggers and is released on its own', () => {
+    const pattern = patternOf({ 0: { slide: true }, 1: { note: 1, slide: true }, 2: { note: 2 } });
+    const sequencer = new BassSequencer();
+    const events = [0, 1, 2].flatMap((i) => sequencer.step(pattern, i, i * 0.125, 0.125, midiOf, 1, false));
+    expect(events.filter((e) => e.type === 'on').map((e) => e.type === 'on' && e.legato)).toEqual([false, false, false]);
+    expect(events.filter((e) => e.type === 'off')).toHaveLength(3);
+    // The marks are still there for when slides come back on.
+    expect(pattern.filter((s) => s.slide)).toHaveLength(2);
+  });
+
+  it('dims SLIDE and ACCENT on steps without a note, and all of SLIDE while slides are off', () => {
+    const pattern = patternOf({ 2: { slide: true, accent: true } });
+    const on = bassDimmedCells(pattern, true);
+    expect(on[BASS_SLIDE_ROW]?.[2]).toBe(false); // a note: active
+    expect(on[BASS_SLIDE_ROW]?.[3]).toBe(true); // a rest: dimmed
+    expect(on[BASS_ACCENT_ROW]?.[3]).toBe(true);
+    expect(on[BASS_ACCENT_ROW]?.[2]).toBe(false);
+    expect(on.slice(0, 5).flat().some(Boolean)).toBe(false); // note rows never dim
+    const off = bassDimmedCells(pattern, false);
+    expect(off[BASS_SLIDE_ROW]?.every(Boolean)).toBe(true);
+    expect(off[BASS_ACCENT_ROW]?.[2]).toBe(false);
+  });
+
   it('a slide on the last step glides into the first note of the next bar', () => {
     const events = run(patternOf({ 0: {}, 15: { slide: true } }), STEPS + 1);
     const last = events.filter((e) => e.type === 'on').at(-1);
@@ -243,6 +267,16 @@ describe('BASS in the store', () => {
     store.toggleBassWave();
     store.toggleBassSub();
     expect(store.getState().bass).toMatchObject({ wave: 'square', sub: true });
+  });
+
+  it('SLIDE ON/OFF switches slides without touching the marks', () => {
+    const marks = store.getState().bass.pattern.filter((s) => s.slide).length;
+    expect(store.getState().bass.slides).toBe(true);
+    store.toggleBassSlides();
+    expect(store.getState().bass.slides).toBe(false);
+    expect(store.getState().bass.pattern.filter((s) => s.slide)).toHaveLength(marks);
+    store.toggleBassSlides();
+    expect(store.getState().bass.slides).toBe(true);
   });
 
   it('hand edits keep the generation', () => {

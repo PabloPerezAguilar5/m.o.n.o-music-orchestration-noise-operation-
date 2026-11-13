@@ -37,6 +37,7 @@ export function sceneFromState(state: AppState): AudioScene {
       drive: bassKnobs.drive ?? 0,
       wave: bass.wave,
       sub: bass.sub,
+      slides: bass.slides,
     },
     synth: {
       generation: synth.generation,

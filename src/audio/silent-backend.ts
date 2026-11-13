@@ -81,8 +81,8 @@ export class SilentBackend implements AudioBackend {
         sounding.push('drum');
       }
       if (scene?.cables.includes('bass')) {
-        const { pattern, root, scale } = scene.bass;
-        const events = this.bassSequencer.step(pattern, step, time, duration, (d) => bassMidi(root, scale, d));
+        const { pattern, root, scale, slides } = scene.bass;
+        const events = this.bassSequencer.step(pattern, step, time, duration, (d) => bassMidi(root, scale, d), 1, slides);
         this.bassEvents.push(...events);
         if (events.some((event) => event.type === 'on')) sounding.push('bass');
       }

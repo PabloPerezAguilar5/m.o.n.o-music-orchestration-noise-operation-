@@ -147,6 +147,20 @@ describe('linkAudio (store ↔ backend)', () => {
     expect(pulses.map((p) => p.id)).toEqual(expect.arrayContaining(['drum', 'bass', 'synth']));
   });
 
+  it('SLIDE OFF reaches the sequencer: the same line plays without legato notes', () => {
+    store.addNode('bass');
+    store.toggleBassStep(4, 4); // a tonic on step 5, right after the slide on step 4
+    const legatos = () => backend.bassEvents.filter((event) => event.type === 'on' && event.legato).length;
+    for (let ms = 0; ms <= 1950; ms += 50) backend.advanceTo(ms / 1000);
+    expect(legatos()).toBe(1); // slides on: step 4 glides into step 5
+
+    store.toggleBassSlides();
+    expect(backend.scenes.at(-1)!.bass.slides).toBe(false);
+    for (let ms = 2000; ms <= 3950; ms += 50) backend.advanceTo(ms / 1000);
+    expect(legatos()).toBe(1); // none in the second bar
+    expect(backend.bassEvents.filter((event) => event.type === 'on' && event.time >= 2)).toHaveLength(7);
+  });
+
   it('forwards BASS key, knobs and keys as scenes', () => {
     store.nudgeRoot(1);
     store.setParam('bass', 'cutoff', 0.8);

@@ -42,30 +42,47 @@ menos resonancia (hay un test que lo mide).
 ## Sonidos (presets)
 
 Un sonido **no mueve las perillas**: fija lo que ellas no alcanzan
-(envolvente de filtro, forma de la amplitud, drive, octava) y escala ATAQUE
-y RELEASE. Las seis perillas siguen actuando encima.
+(envolvente de filtro, forma de la amplitud, drive, octava), escala ATAQUE y
+RELEASE, y corre ONDA, RESO y DETUNE desde donde esten las perillas. Las seis
+perillas siguen actuando encima.
 
 | Sonido | Caracter |
 | --- | --- |
-| **PLUCK** | Corto y brillante: el filtro se cierra rapido, no sostiene. |
+| **PLUCK** | Cuerda pulsada: arranca oscuro, el filtro se abre de golpe y se cierra rapido con algo de resonancia, el volumen se apaga aunque la nota siga (decay de 250 ms, sin sustain). Angosto (menos DETUNE), mas sierra, sin drive. |
 | **PAD** | Lento y ancho: ataque x12, release x3, sostiene al 85 %, el filtro casi no se mueve. |
-| **STAB** | Golpes de acorde cortos y con mordida (mas drive). |
+| **STAB** | Golpe de acorde "de metales": filtro abierto y quieto (casi sin barrido), onda hueca tirando a cuadrada, muy ancho (+DETUNE), con drive; volumen pleno mientras dura el paso y corte seco al final. |
 | **GLASS** | Una octava arriba, abierto y con cola. |
+
+PLUCK y STAB antes se parecian demasiado (los dos eran cortos con el filtro
+barriendo). Ahora son opuestos en cada eje: barrido contra filtro quieto,
+volumen que cae contra volumen sostenido, sierra contra cuadrada, angosto
+contra ancho, limpio contra saturado. Un test lo mide.
 
 ## Panel
 
 ```
 [ SYNTH: ONDA CUTOFF RESO ATAQUE RELEASE DETUNE ] [ SONIDO: PLUCK PAD / STAB GLASS ]
-[ ESCALA: - C +, - PENTA MENOR + ] [ MODO: ARPEGIO ACORDES / MELODIA AMBIENTE ] [ PATRON: DICE ] .. [ CAOS ]
+[ ESCALA: - C +, - PENTA MENOR + ] [ MODO: ARPEGIO ACORDES / MELODIA AMBIENTE ] [ PATRON: DICE BORRAR ] .. [ CAOS ]
 ```
 
+- **BORRAR** (en PATRON, tambien en DRUM y BASS): deja todos los pasos en
+  blanco. Es como una edicion a mano: suena desde el paso siguiente y no
+  cambia la semilla, asi que DICE, un modo o CAOS lo vuelven a llenar. No se
+  puede deshacer.
+- **Barra espaciadora:** reproduce y detiene desde cualquier lugar, salvo
+  mientras se escribe el tempo (y si el display del tempo tiene el foco, el
+  espacio lo abre para escribir, como antes).
+
 - **Secuenciador:** 11 filas x 16 pasos. Las 10 de arriba son las notas de
-  dos octavas de la escala, con nombre y octava (`Bb4` ... `C3`); la ultima es
-  **DUR**.
+  dos octavas de la escala, con nombre y octava (`Bb4` ... `C3`); la ultima,
+  separada por un espacio, es **DURACION** (con el mismo criterio que SLIDE y
+  ACCENT en el BASS: nombre completo, aparte de las notas, atenuada en los
+  pasos sin notas).
 - **Acordes:** tocar una nota la agrega al paso; tocarla de nuevo la saca.
   Hasta 3 notas por paso.
-- **Duracion:** tocar DUR en un paso pasa por 1, 2, 4, 8 y 16 pasos. El
+- **Duracion:** tocar DURACION en un paso pasa por 1, 2, 4, 8 y 16 pasos. El
   numero queda escrito en la tecla; el LED se enciende si dura mas de un paso.
+- El SYNTH no tiene slides, asi que no tiene tecla SLIDE ON/OFF.
 - **ONDA** pasa de sierra (0) a cuadrada (1) de forma continua.
 - **DETUNE** separa los dos osciladores de cada voz (0 a 40 cents).
 - **ATAQUE:** 2 ms a ~2 s. **RELEASE:** 10 ms a ~2,5 s. Ambos escalados por el
@@ -108,6 +125,13 @@ limitador del MASTER):
 | BASS | 0,31 | 0 dB |
 | SYNTH | 0,25 | 0 dB |
 | **DRUM + BASS + SYNTH** | **0,75 (-2,4 dBFS)** | **-0,4 dB como maximo** |
+| Los tres, SYNTH en STAB (acordes) | 0,88 (-1,1 dBFS) | -1,4 dB |
+| Los tres, SYNTH en PAD / GLASS | 0,71 / 0,75 | -0,03 / -0,37 dB |
+
+- Cada sonido tiene un ajuste de nivel (`level`): STAB sale a la mitad
+  porque sostiene acordes saturados todo el paso; sin el ajuste la suma
+  llegaba a 1,06 (por encima de 0 dBFS). La prueba de mezcla tambien mide
+  STAB.
 
 - El SYNTH salia unas 6 veces mas bajo que el BASS: se subio su etapa de
   salida y el nivel de su modulo (1,5). Queda parejo con el BASS.
@@ -126,7 +150,7 @@ limitador del MASTER):
   el BASS). GLASS suena una octava mas arriba.
 - **Cuarta nota en un paso lleno:** reemplaza a la nota mas cercana del
   acorde (mueve esa voz del acorde) en lugar de no hacer nada.
-- **Duraciones:** 1, 2, 4, 8 y 16 pasos, ciclando con DUR. Las notas se
+- **Duraciones:** 1, 2, 4, 8 y 16 pasos, ciclando con DURACION. Las notas se
   sueltan al 90 % de su duracion, para que un acorde repetido se vuelva a
   atacar.
 - **El SYNTH no tiene filas de acento ni de slide.** El motor los soporta (los
@@ -153,7 +177,7 @@ limitador del MASTER):
   etapa de diseno.
 - Probado en Chromium (desarrollo y build de produccion). Safari y Firefox, no.
 - Terminos nuevos en la interfaz: PLUCK, PAD, STAB, GLASS (nombres de los
-  sonidos, como los pediste), DUR, DETUNE.
+  sonidos, como los pediste), DETUNE.
 
 ## Tests
 
@@ -175,7 +199,7 @@ limitador del MASTER):
   encienden juntos en un paso comun.
 - `tests/unit/state.test.ts`: BASS y SYNTH comparten la tonalidad.
 - `tests/e2e/audio.spec.ts`: prueba de humo del SYNTH (suena, cabezal, nodo,
-  cable cortado y reconectado; panel: sonidos, modos, DICE, acorde, DUR,
+  cable cortado y reconectado; panel: sonidos, modos, DICE, acorde, DURACION,
   filas con nombre y octava, tonalidad compartida con el BASS) y la prueba de
   **mezcla**.
 - `tests/e2e/parity.spec.ts`: `panel-synth` sale de la comparacion (punto 7,

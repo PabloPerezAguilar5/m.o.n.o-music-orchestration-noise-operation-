@@ -93,6 +93,11 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  *    LEDs) and PATRÓN (DICE), and the display shows the key. No prototype equivalent.
  *    Cables also gained an invisible, wide tap target (to cut and plug them back); it
  *    draws nothing, so every other state is still compared.
+ *    After stage 4, on request: a gap separates the five note rows from the rows that
+ *    modify them, now captioned SLIDE and ACCENT in full (the caption column widens to
+ *    fit them); SLIDE and ACCENT keys are dimmed on steps without a note; PATRÓN gained
+ *    a SLIDE ON/OFF key with an LED, and with slides off the whole SLIDE row is dimmed
+ *    (the marks stay).
  */
 /*
  * 7. panel-synth (stage 4): SYNTH became a real polyphonic instrument. The prototype's
@@ -102,6 +107,16 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  *    STAB, GLASS), ESCALA (shared with BASS), MODO (four DICE styles) and PATRÓN (DICE),
  *    and the display shows sound and key. The knobs start where PLUCK sounds right
  *    (ONDA keeps its prototype position). No prototype equivalent.
+ *    After stage 4, the same criteria as BASS: a gap separates the ten note rows from
+ *    the length row, captioned DURACIÓN in full, and its keys are dimmed on steps
+ *    without notes. SYNTH has no slides, so it has no SLIDE ON/OFF key.
+ */
+/*
+ * 8. After stage 4, on request: PATRÓN gained a BORRAR key on DRUM, BASS and SYNTH that
+ *    leaves the node's pattern blank. On DRUM it is stacked under RNDM, so the knob row
+ *    still fits at 1280 px with the eight kit keys. Affects panel-drum, panel-bass and
+ *    panel-synth, already excluded above. The space bar now plays and stops; it draws
+ *    nothing.
  */
 const EXCLUDED_STATES: Readonly<Record<string, string>> = {
   'panel-drum': 'DRUM panel redesigned in stage 2 and after',

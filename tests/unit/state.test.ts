@@ -104,6 +104,28 @@ describe('Store', () => {
     expect(scene.synth).toMatchObject({ root: 1, scale: 'minor' });
   });
 
+  describe('BORRAR', () => {
+    it('leaves every step of DRUM, BASS and SYNTH blank, keeping the generation', () => {
+      store.clearPattern('drum');
+      store.clearPattern('bass');
+      store.clearPattern('synth');
+      const { drum, bass, synth } = store.getState();
+      expect(drum.pattern.flat(2)).toEqual([]);
+      expect(bass.pattern.every((s) => s.note === null && !s.slide && !s.accent)).toBe(true);
+      expect(synth.pattern.every((s) => s.notes.length === 0)).toBe(true);
+      expect([drum.generation, bass.generation, synth.generation]).toEqual([0, 0, 0]);
+    });
+
+    it('only clears the node it is asked to, and DICE fills it again', () => {
+      const bass = store.getState().bass.pattern;
+      store.clearPattern('synth');
+      store.clearPattern('master'); // no pattern: nothing happens
+      expect(store.getState().bass.pattern).toBe(bass);
+      store.randomizeSynth(() => 5);
+      expect(store.getState().synth.pattern.some((s) => s.notes.length > 0)).toBe(true);
+    });
+  });
+
   describe('cables', () => {
     it('cuts and plugs back a node cable; MASTER has none', () => {
       store.addNode('bass');

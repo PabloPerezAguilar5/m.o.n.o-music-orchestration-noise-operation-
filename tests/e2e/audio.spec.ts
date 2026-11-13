@@ -400,6 +400,17 @@ async function clickCable(page: Page, id: string): Promise<void> {
   await page.mouse.click(box.x, box.y);
 }
 
+/** The space above grid row `row` is clearly wider than between the rows above it. */
+async function expectGapBefore(page: Page, row: number): Promise<void> {
+  const top = async (r: number) => (await page.locator(`.st[data-r="${r}"][data-c="0"]`).boundingBox())!;
+  const above = await top(row - 1);
+  const twoAbove = await top(row - 2);
+  const at = await top(row);
+  const normal = above.y - (twoAbove.y + twoAbove.height);
+  const gap = at.y - (above.y + above.height);
+  expect(gap, `gap above row ${row}`).toBeGreaterThanOrEqual(normal + 5);
+}
+
 async function addBass(page: Page): Promise<void> {
   await page.click('#add');
   await page.click('.chip[data-id="bass"]');
@@ -467,7 +478,28 @@ test.describe('BASS', () => {
     await expect(page.locator('#scale')).toHaveText('MENOR');
     const captions = await page.locator('mono-step-grid .sq > span:not(.nm)').allTextContents();
     // C# minor: C# Eb E Ab B (spelled as fck-synth does), highest on top.
-    expect(captions.filter(Boolean)).toEqual(['B', 'Ab', 'E', 'Eb', 'C#', 'SLD', 'ACC']);
+    expect(captions.filter(Boolean)).toEqual(['B', 'Ab', 'E', 'Eb', 'C#', 'SLIDE', 'ACCENT']);
+
+    // A gap sets SLIDE and ACCENT apart from the notes.
+    await expectGapBefore(page, 5);
+
+    // SLIDE and ACCENT dim on steps without a note: step 2 is a rest in DRONE (notes on 1 and 9).
+    await page.click('[data-mode="drone"]');
+    await expect(page.locator('.st[data-r="5"][data-c="1"]')).toHaveClass(/\bdim\b/);
+    await expect(page.locator('.st[data-r="6"][data-c="1"]')).toHaveClass(/\bdim\b/);
+    await expect(page.locator('.st[data-r="6"][data-c="0"]')).not.toHaveClass(/\bdim\b/);
+
+    // SLIDE ON/OFF: off dims the whole SLIDE row and keeps the marks.
+    const slides = page.locator('#slides');
+    await expect(slides).toHaveText('SLIDE');
+    await expect(slides).toHaveAttribute('aria-pressed', 'true');
+    const marks = await page.locator('.st[data-r="5"].a').count();
+    await slides.click();
+    await expect(slides).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.st[data-r="5"].dim')).toHaveCount(16);
+    await expect(page.locator('.st[data-r="5"].a')).toHaveCount(marks);
+    await slides.click();
+    await expect(page.locator('.st[data-r="5"][data-c="0"]')).not.toHaveClass(/\bdim\b/);
 
     // Wave and sub.
     await expect(page.locator('#wave')).toHaveText('SIERRA');
@@ -551,12 +583,16 @@ test.describe('SYNTH', () => {
     for (const row of [9, 7, 5]) await expect(page.locator(`.st[data-r="${row}"][data-c="1"]`)).toHaveClass(/\ba\b/);
     const dur = page.locator('.st[data-r="10"][data-c="1"]');
     await expect(dur).toHaveText('1');
+    await expect(dur).not.toHaveClass(/\bdim\b/);
     await dur.click();
     await expect(dur).toHaveText('2');
+    // DURACIÓN is set apart from the notes and dims on steps without notes (step 3 here).
+    await expectGapBefore(page, 10);
+    await expect(page.locator('.st[data-r="10"][data-c="2"]')).toHaveClass(/\bdim\b/);
 
     // Rows named after the key over two octaves; the key is shared with BASS.
     const captions = await page.locator('mono-step-grid .sq > span:not(.nm)').allTextContents();
-    expect(captions.filter(Boolean)).toEqual(['Bb4', 'G4', 'F4', 'Eb4', 'C4', 'Bb3', 'G3', 'F3', 'Eb3', 'C3', 'DUR']);
+    expect(captions.filter(Boolean)).toEqual(['Bb4', 'G4', 'F4', 'Eb4', 'C4', 'Bb3', 'G3', 'F3', 'Eb3', 'C3', 'DURACIÓN']);
     await page.click('[data-root="1"]');
     await addNode(page, 'bass');
     await expect(page.locator('#root')).toHaveText('C#');
@@ -601,6 +637,15 @@ test.describe('mezcla', () => {
     expect(defaults.out).toBeLessThan(1);
     expect(defaults.reduction).toBeGreaterThan(-3);
 
+    // The loudest SYNTH sound (STAB: sustained, driven chords) stays under full scale too.
+    await page.click('#nd-synth');
+    await page.click('[data-preset="stab"]');
+    await page.click('[data-mode="chords"]');
+    await page.waitForTimeout(2200);
+    const stab = await mixOver(page, 4000);
+    expect(stab.bus).toBeLessThan(1);
+    expect(stab.reduction).toBeGreaterThan(-3);
+
     // Every MASTER level and VOL at full: the limiter and the soft clip still keep it under 0 dBFS.
     for (const param of ['drumLevel', 'bassLevel', 'synthLevel', 'volume']) {
       await page.evaluate((p) => window.__mono.store.setParam('master', p, 1), param);
@@ -608,5 +653,25 @@ test.describe('mezcla', () => {
     const loud = await mixOver(page, 4000);
     expect(loud.bus).toBeGreaterThan(defaults.bus);
     expect(loud.out).toBeLessThan(1);
+  });
+});
+
+test.describe('BORRAR', () => {
+  test('deja en blanco el patrón de DRUM, BASS y SYNTH, y el nodo se calla', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    for (const id of ['drum', 'bass', 'synth']) {
+      await addNode(page, id);
+      await expect(page.locator('mono-step-grid .st.a').first()).toBeVisible();
+      await expect(page.locator('#clear')).toHaveText('BORRAR');
+      await page.click('#clear');
+      await expect(page.locator('mono-step-grid .st.a')).toHaveCount(0);
+    }
+    // Every pattern blank: once the tails ring out, silence.
+    await waitSilence(page);
+    // DICE fills it again.
+    await page.click('#dice');
+    await expect(page.locator('mono-step-grid .st.a').first()).toBeVisible();
+    expect(errors).toEqual([]);
   });
 });

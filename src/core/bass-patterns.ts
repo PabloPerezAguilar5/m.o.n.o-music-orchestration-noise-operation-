@@ -32,6 +32,9 @@ export const BASS_GRID_ROWS = DEGREES + 2;
 
 const REST: BassStep = { note: null, slide: false, accent: false, length: 1 };
 
+/** A BASS pattern of rests, with no slide or accent marks (BORRAR). */
+export const EMPTY_BASS_PATTERN: BassPattern = Array.from({ length: STEPS }, () => REST);
+
 /** Grid row of a degree: the highest degree is the top row. */
 export const rowOfDegree = (degree: number): number => DEGREES - 1 - degree;
 export const degreeOfRow = (row: number): number => DEGREES - 1 - row;
@@ -50,7 +53,21 @@ export const DEFAULT_BASS_PATTERN: BassPattern = (() => {
   }));
 })();
 
-/** On/off view for the step grid: five degree rows, SLD, ACC. */
+/**
+ * Cells shown dimmed on the grid: SLIDE and ACCENT on steps without a note (they do
+ * nothing there), and the whole SLIDE row while slides are switched off.
+ */
+export function bassDimmedCells(pattern: BassPattern, slides: boolean): Pattern {
+  return Array.from({ length: BASS_GRID_ROWS }, (_, row) =>
+    pattern.map((step) => {
+      if (row === BASS_SLIDE_ROW) return !slides || step.note === null;
+      if (row === BASS_ACCENT_ROW) return step.note === null;
+      return false;
+    }),
+  );
+}
+
+/** On/off view for the step grid: five degree rows, SLIDE, ACCENT. */
 export function gridFromBassPattern(pattern: BassPattern): Pattern {
   return Array.from({ length: BASS_GRID_ROWS }, (_, row) =>
     pattern.map((step) => {
@@ -63,7 +80,7 @@ export function gridFromBassPattern(pattern: BassPattern): Pattern {
 
 /**
  * A tap on the grid. On a degree row it sets that note (tapping the same note
- * again makes a rest); on SLD and ACC it flips the flag.
+ * again makes a rest); on SLIDE and ACCENT it flips the flag.
  */
 export function toggleBassCell(pattern: BassPattern, row: number, col: number): BassPattern {
   const step = pattern[col];
@@ -175,7 +192,8 @@ export class BassSequencer {
 
   /**
    * Events for one step. `midiOf` turns a degree into a MIDI note (key and scale).
-   * `gate` scales the gate length (per mode).
+   * `gate` scales the gate length (per mode). With `slides` off every slide mark is
+   * ignored (the marks stay in the pattern).
    */
   step(
     pattern: BassPattern,
@@ -184,6 +202,7 @@ export class BassSequencer {
     duration: number,
     midiOf: (degree: number) => number,
     gate = 1,
+    slides = true,
   ): BassEvent[] {
     const step = pattern[index % STEPS] ?? REST;
     const events: BassEvent[] = [];
@@ -198,11 +217,12 @@ export class BassSequencer {
     events.push({ type: 'on', time, id, midi: midiOf(step.note), accent: step.accent, legato });
 
     const next = pattern[(index + 1) % STEPS] ?? REST;
-    if (step.slide && next.note !== null) {
+    const slide = slides && step.slide;
+    if (slide && next.note !== null) {
       this.held = id; // released by the next step
     } else {
       this.held = null;
-      const length = step.slide ? 1 : Math.max(1, step.length) * GATE_FRACTION * gate;
+      const length = slide ? 1 : Math.max(1, step.length) * GATE_FRACTION * gate;
       events.push({ type: 'off', time: time + length * duration, id });
     }
     return events;

@@ -7,6 +7,8 @@ import { reset } from '../styles/shared';
 export type StepToggleEvent = CustomEvent<{ row: number; col: number }>;
 
 const COLUMNS = Array.from({ length: STEPS }, (_, index) => index);
+/** Height of the spacer row before `split` (plus the grid gap on each side). */
+const GAP_PX = 3;
 
 /**
  * 16-step sequencer: numbered columns, one row of keys per voice, an LED on
@@ -25,7 +27,12 @@ export class MonoStepGrid extends LitElement {
         flex: 1;
         display: grid;
         gap: 3px;
-        grid-template-columns: 30px repeat(16, 1fr);
+        grid-template-columns: minmax(30px, max-content) repeat(16, 1fr);
+      }
+      /* Gap between the note rows and the rows that modify them (SLIDE, ACCENT, DURACIÓN):
+         a row of its own, so the rows on both sides keep their height. */
+      .sq > .gap {
+        grid-column: 1 / -1;
       }
       .sq span {
         font-size: 8px;
@@ -66,6 +73,10 @@ export class MonoStepGrid extends LitElement {
         outline: 2px solid #14141c;
         outline-offset: 1px;
       }
+      /* A key that does nothing right now (e.g. ACCENT on a step without a note). Still tappable. */
+      .st.dim {
+        opacity: 0.4;
+      }
       /* Many rows (SYNTH: ten notes and DUR): tighter, so they fit the zone. */
       .sq.dense {
         gap: 2px;
@@ -97,15 +108,25 @@ export class MonoStepGrid extends LitElement {
   /** Row captions, top to bottom. */
   @property({ attribute: false }) rows: readonly string[] = [];
   @property({ attribute: false }) pattern: Pattern = [];
-  /** Text written on the keys of one row (e.g. SYNTH's DUR), or null. */
+  /** Text written on the keys of one row (e.g. SYNTH's DURACIÓN), or null. */
   @property({ attribute: false }) texts: { readonly row: number; readonly values: readonly string[] } | null = null;
+  /** Rows from this index on are set apart by a gap (BASS and SYNTH: below the notes), or null. */
+  @property({ type: Number }) split: number | null = null;
+  /** Keys shown dimmed, same shape as `pattern`, or null. */
+  @property({ attribute: false }) dimmed: Pattern | null = null;
   /** Step being played, or -1. */
   @property({ type: Number }) step = -1;
 
   override render(): TemplateResult {
+    const count = this.rows.length;
+    const split = this.split !== null && this.split > 0 && this.split < count ? this.split : null;
+    const rows =
+      split === null
+        ? `auto repeat(${count},1fr)`
+        : `auto repeat(${split},1fr) ${GAP_PX}px repeat(${count - split},1fr)`;
     return html`<div
-      class=${this.rows.length > 8 ? 'sq dense' : 'sq'}
-      style="grid-template-rows:auto repeat(${this.rows.length},1fr)"
+      class=${count > 8 ? 'sq dense' : 'sq'}
+      style="grid-template-rows:${rows}"
       @click=${this.onClick}
     >
       <span></span>${COLUMNS.map((col) => html`<span class="nm">${col + 1}</span>`)}
@@ -116,7 +137,9 @@ export class MonoStepGrid extends LitElement {
   private row(label: string, row: number): TemplateResult {
     const cells = this.pattern[row] ?? [];
     const texts = this.texts?.row === row ? this.texts.values : null;
-    return html`<span>${label}</span>${COLUMNS.map((col) => {
+    const dimmed = this.dimmed?.[row];
+    return html`${row === this.split ? html`<i class="gap"></i>` : nothing}<span>${label}</span>${COLUMNS.map(
+        (col) => {
         const active = cells[col] === true;
         const text = texts?.[col] ?? '';
         return html`<button
@@ -125,13 +148,15 @@ export class MonoStepGrid extends LitElement {
             a: active,
             g: ((col >> 2) & 1) === 1,
             ph: col === this.step,
+            dim: dimmed?.[col] === true,
           })}
           data-r=${row}
           data-c=${col}
           aria-label="${label} ${col + 1}${text ? ` ${text}` : ''}"
           aria-pressed=${active}
         >${text ? html`<b>${text}</b>` : nothing}</button>`;
-      })}`;
+        },
+      )}`;
   }
 
   private readonly onClick = (event: MouseEvent): void => {

@@ -35,6 +35,9 @@ export const noteOfRow = (row: number): number => SYNTH_STEPS - 1 - row;
 
 const REST: SynthStep = { notes: [], length: 1 };
 
+/** A SYNTH pattern of rests (BORRAR). */
+export const EMPTY_SYNTH_PATTERN: SynthPattern = Array.from({ length: STEPS }, () => REST);
+
 /** Clamps, dedupes, sorts and caps a chord. */
 const chord = (notes: readonly number[]): number[] =>
   [...new Set(notes.map((n) => Math.min(SYNTH_STEPS - 1, Math.max(0, Math.round(n)))))]
@@ -61,6 +64,13 @@ export function gridFromSynthPattern(pattern: SynthPattern): Pattern {
     pattern.map((step) =>
       row === SYNTH_DUR_ROW ? step.notes.length > 0 && step.length > 1 : step.notes.includes(noteOfRow(row)),
     ),
+  );
+}
+
+/** Cells shown dimmed on the grid: the length row on steps without notes (it does nothing there). */
+export function synthDimmedCells(pattern: SynthPattern): Pattern {
+  return Array.from({ length: SYNTH_GRID_ROWS }, (_, row) =>
+    pattern.map((step) => row === SYNTH_DUR_ROW && step.notes.length === 0),
   );
 }
 

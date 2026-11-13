@@ -46,16 +46,16 @@ export const KNOB_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
  */
 export const ROW_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   master: [],
-  synth: ['DUR'],
+  synth: ['DURACIÓN'],
   drum: ['KCK', 'SNR', 'HAT', 'PRC'],
-  bass: ['SLD', 'ACC'],
+  bass: ['SLIDE', 'ACCENT'],
   drone: [],
   dist: [],
   lfo: [],
   lead: [],
 };
 
-/** BASS grid captions: the five notes of the key (highest on top), then SLD and ACC. */
+/** BASS grid captions: the five notes of the key (highest on top), then SLIDE and ACCENT. */
 export const bassRowLabels = (root: number, scale: ScaleId): string[] => [
   ...Array.from({ length: DEGREES }, (_, row) => degreeName(root, scale, DEGREES - 1 - row)),
   ...ROW_LABELS.bass,
@@ -63,7 +63,7 @@ export const bassRowLabels = (root: number, scale: ScaleId): string[] => [
 
 /**
  * SYNTH grid captions: the ten notes of its two octaves with their octave number
- * (highest on top), then DUR.
+ * (highest on top), then DURACIÓN.
  */
 export const synthRowLabels = (root: number, scale: ScaleId): string[] => [
   ...Array.from({ length: SYNTH_STEPS }, (_, row) => {
@@ -146,6 +146,8 @@ export const TEXT = {
   patternSection: 'PATRÓN',
   rndm: 'RNDM',
   rndmHint: 'Patrón nuevo al azar',
+  clear: 'BORRAR',
+  clearHint: 'Borrar el patrón: todos los pasos en blanco',
   kitSection: 'KIT',
   kitHint: 'Kit',
   clickSection: 'CLICK',
@@ -156,6 +158,8 @@ export const TEXT = {
   waves: { saw: 'SIERRA', square: 'CUADRADA' },
   waveHint: 'Forma de onda: sierra o cuadrada',
   sub: 'SUB',
+  slides: 'SLIDE',
+  slidesHint: 'Slide: prender o apagar todos, sin borrar los marcados',
   subHint: 'Sub: una octava más abajo',
   keySection: 'ESCALA',
   root: 'TÓNICA',

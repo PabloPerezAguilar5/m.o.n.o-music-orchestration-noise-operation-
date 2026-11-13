@@ -25,6 +25,7 @@ export function bassTrackSpec(): TrackSpec<BassScene> {
         duration,
         (degree) => bassMidi(part.root, part.scale, degree),
         BASS_VOICES[part.mode].gate,
+        part.slides,
       ),
     reset: () => sequencer.reset(),
   };

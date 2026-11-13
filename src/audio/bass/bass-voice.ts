@@ -51,5 +51,6 @@ export function bassParamsFromScene(scene: BassScene): EngineParams {
     sustain: 1,
     release: 0.008,
     transpose: 0,
+    level: 1,
   };
 }

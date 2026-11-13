@@ -77,7 +77,7 @@ instanciaria la version WASM en lugar de `VoiceEngine`.
 ## Secuencia, slide y acento
 
 - Cada paso tiene una **nota** (uno de los 5 grados de la escala) o silencio,
-  y las marcas **SLD** (slide) y **ACC** (acento).
+  y las marcas **SLIDE** y **ACCENT** (acento).
 - **Gate:** una nota suena el 55 % del paso (x el largo en pasos, x el gate
   del modo) y se suelta.
 - **Slide** (como en la 303): el slide de un paso **mantiene** esa nota y la
@@ -126,8 +126,15 @@ eventos ya programados.
 
 - **Secuenciador:** 7 filas x 16 pasos. Las 5 de arriba son las notas de la
   escala (la mas aguda arriba), con el nombre de la nota segun tonica y
-  escala; despues SLD y ACC. Tocar una nota la pone en ese paso (reemplaza la
-  que habia); tocarla de nuevo deja el paso en silencio.
+  escala; despues, separadas por un espacio, **SLIDE** y **ACCENT**. Tocar
+  una nota la pone en ese paso (reemplaza la que habia); tocarla de nuevo deja
+  el paso en silencio.
+- **SLIDE y ACCENT atenuados** en los pasos sin nota (ahi no hacen nada); se
+  pueden tocar igual.
+- **SLIDE ON/OFF** (tecla con LED en PATRON, junto a DICE): apagado, ningun
+  slide suena y la fila SLIDE se ve atenuada entera, pero las marcas quedan;
+  al prenderlo vuelven a sonar. Entra al instante, como una perilla. Una nota
+  que ya estaba ligada por un slide termina su glide en el paso siguiente.
 - **Display:** `BASS · C PENTA MENOR`. Al cambiar tonica, escala o modo
   muestra el cambio (`BASS TONICA C#`, `BASS MODO DRONE`).
 - **DICE:** patron nuevo al azar en el modo actual; siempre distinto en la
@@ -181,7 +188,7 @@ eventos ya programados.
 ## Tests
 
 - `tests/unit/bass.test.ts`: escalas y notas; patron inicial; grilla (filas,
-  notas, SLD, ACC); generacion reproducible por modo y caracter de cada modo;
+  notas, SLIDE, ACCENT); generacion reproducible por modo y caracter de cada modo;
   efecto de CAOS; **secuencia** (tiempos, gate, acento, slide, cadena de
   slides, slide a silencio, slide del ultimo paso al primero, largo y gate
   del modo, reset); store (DICE siempre distinto, modo y CAOS con la misma

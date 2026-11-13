@@ -34,6 +34,7 @@ const bassScene = (over: Partial<BassScene> = {}): BassScene => ({
   drive: 0.3,
   wave: 'saw',
   sub: false,
+  slides: true,
   ...over,
 });
 
@@ -195,7 +196,8 @@ describe('SYNTH voice', () => {
 
   it('two detuned oscillators: DETUNE changes the sound (the pair beats)', () => {
     const play = (detune: number) => {
-      const engine = synth({ preset: 'pad', detune, attack: 0 });
+      // The engine's own detune (the knob plus PAD's shift would never be exactly 0).
+      const engine = synth({ preset: 'pad', attack: 0 }, { detune });
       engine.noteOn(1, 60, false, false);
       render(engine, 0.3);
       return render(engine, 0.5);
@@ -255,6 +257,36 @@ describe('SYNTH voice', () => {
       return rms(render(engine, 0.4)).toFixed(4);
     });
     expect(new Set(sounds).size).toBe(SYNTH_PRESETS.length);
+  });
+
+  it('PLUCK and STAB are clearly different: PLUCK sweeps and dies away, STAB holds open and bright', () => {
+    // A held chord, as the sequencer plays a one-bar note.
+    const play = (preset: 'pluck' | 'stab') => {
+      const engine = synth({ preset });
+      [60, 64, 67].forEach((midi, i) => engine.noteOn(i + 1, midi, false, false));
+      render(engine, 0.05); // past the onset
+      const start = render(engine, 0.03); // 50–80 ms
+      render(engine, 0.22);
+      const held = render(engine, 0.05); // 300–350 ms, the gate still open
+      return { start, held };
+    };
+    const pluck = play('pluck');
+    const stab = play('stab');
+    // PLUCK decays while held (to under half in a quarter second); STAB keeps its level.
+    expect(rms(pluck.held)).toBeLessThan(rms(pluck.start) * 0.5);
+    expect(rms(stab.held)).toBeGreaterThan(rms(stab.start) * 0.6);
+    // PLUCK's filter closes while the note is held; STAB's stays open.
+    const pluckKeeps = brightness(pluck.held) / brightness(pluck.start);
+    const stabKeeps = brightness(stab.held) / brightness(stab.start);
+    expect(pluckKeeps).toBeLessThan(0.7);
+    expect(stabKeeps).toBeGreaterThan(pluckKeeps + 0.15);
+    // And they are built differently: STAB is hollower, wider and driven.
+    const p = synthParamsFromScene(synthScene({ preset: 'pluck' }));
+    const s = synthParamsFromScene(synthScene({ preset: 'stab' }));
+    expect(s.wave - p.wave).toBeGreaterThan(0.5);
+    expect(s.detune - p.detune).toBeGreaterThan(0.5);
+    expect(s.drive - p.drive).toBeGreaterThanOrEqual(0.5);
+    expect(s.sustain - p.sustain).toBeGreaterThan(0.5);
   });
 
   it('allOff releases every voice', () => {
