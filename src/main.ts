@@ -15,6 +15,12 @@ window.addEventListener('keydown', unlock, { capture: true });
 if (import.meta.env.DEV) {
   // Probe for the browser tests (dev server only): is sound coming out of the master?
   Object.assign(window, {
-    __mono: { level: () => backend.level(), clickLevel: () => backend.clickLevel(), store, activity },
+    __mono: {
+      level: () => backend.level(),
+      mix: () => backend.mix(),
+      clickLevel: () => backend.clickLevel(),
+      store,
+      activity,
+    },
   });
 }

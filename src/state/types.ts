@@ -1,16 +1,24 @@
 import type { AudioStatus } from '../core/audio-scene';
 import type { BassMode, BassPattern } from '../core/bass-patterns';
-import type { ScaleId } from '../core/bass-scales';
 import type { DrumPattern } from '../core/drum-patterns';
 import type { Point } from '../core/geometry';
-import type { DistType, GridPatternId, NodeId } from '../core/nodes';
-import type { Pattern } from '../core/patterns';
+import type { DistType, NodeId } from '../core/nodes';
+import type { ScaleId } from '../core/scales';
+import type { SynthMode, SynthPattern } from '../core/synth-patterns';
+import type { SynthPreset } from '../core/synth-voices';
 
 export interface TransportState {
   readonly playing: boolean;
   readonly bpm: number;
   /** Current step 0..15, or -1 while stopped. */
   readonly step: number;
+}
+
+/** Tonic and scale, shared by BASS and SYNTH. */
+export interface KeyState {
+  /** 0 = C … 11 = B. */
+  readonly root: number;
+  readonly scale: ScaleId;
 }
 
 export interface DrumState {
@@ -32,13 +40,22 @@ export interface BassState {
   readonly generation: number;
   /** Pattern style used by DICE (fck-synth's modes), also the voice's character. */
   readonly mode: BassMode;
-  /** Tonic, 0 = C … 11 = B. */
-  readonly root: number;
-  readonly scale: ScaleId;
   readonly pattern: BassPattern;
   readonly wave: BassWave;
   /** Sub oscillator one octave down. */
   readonly sub: boolean;
+}
+
+export interface SynthState {
+  /** Generates the pattern; never shown. Kept so a pattern can be saved and rebuilt. */
+  readonly seed: number;
+  /** Bumped on every regeneration (DICE, mode, CAOS); hand edits keep it. */
+  readonly generation: number;
+  /** Pattern style used by DICE. */
+  readonly mode: SynthMode;
+  /** Sound character (PLUCK, PAD, STAB, GLASS). */
+  readonly preset: SynthPreset;
+  readonly pattern: SynthPattern;
 }
 
 /** CLICK on the MASTER panel. */
@@ -58,10 +75,10 @@ export interface AppState {
   /** Kept for every type, so a removed node comes back where it was. */
   readonly positions: Readonly<Record<NodeId, Point>>;
   readonly params: Readonly<Record<NodeId, ParamValues>>;
-  /** On/off grid of SYNTH. DRUM's and BASS's patterns live in `drum` and `bass`. */
-  readonly patterns: Readonly<Record<GridPatternId, Pattern>>;
+  readonly key: KeyState;
   readonly drum: DrumState;
   readonly bass: BassState;
+  readonly synth: SynthState;
   /** Nodes whose cable to MASTER is cut (they stay on the canvas, silent). */
   readonly unplugged: readonly NodeId[];
   /** DRONE pad position, both axes 0..1. */

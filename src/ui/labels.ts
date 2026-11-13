@@ -1,5 +1,7 @@
 import type { BassMode } from '../core/bass-patterns';
-import { DEGREES, degreeName, type ScaleId } from '../core/bass-scales';
+import { DEGREES, degreeName, ROOTS, SYNTH_STEPS, synthMidi, type ScaleId } from '../core/scales';
+import type { SynthMode } from '../core/synth-patterns';
+import type { SynthPreset } from '../core/synth-voices';
 import type { DistType, NodeId } from '../core/nodes';
 
 /** Interface texts (Spanish). */
@@ -44,7 +46,7 @@ export const KNOB_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
  */
 export const ROW_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   master: [],
-  synth: ['NOTA', 'OCT', 'ACC'],
+  synth: ['DUR'],
   drum: ['KCK', 'SNR', 'HAT', 'PRC'],
   bass: ['SLD', 'ACC'],
   drone: [],
@@ -58,6 +60,32 @@ export const bassRowLabels = (root: number, scale: ScaleId): string[] => [
   ...Array.from({ length: DEGREES }, (_, row) => degreeName(root, scale, DEGREES - 1 - row)),
   ...ROW_LABELS.bass,
 ];
+
+/**
+ * SYNTH grid captions: the ten notes of its two octaves with their octave number
+ * (highest on top), then DUR.
+ */
+export const synthRowLabels = (root: number, scale: ScaleId): string[] => [
+  ...Array.from({ length: SYNTH_STEPS }, (_, row) => {
+    const midi = synthMidi(root, scale, SYNTH_STEPS - 1 - row);
+    return `${ROOTS[midi % 12]}${Math.floor(midi / 12) - 1}`;
+  }),
+  ...ROW_LABELS.synth,
+];
+
+export const SYNTH_MODE_LABELS: Readonly<Record<SynthMode, string>> = {
+  arp: 'ARPEGIO',
+  chords: 'ACORDES',
+  melody: 'MELODÍA',
+  ambient: 'AMBIENTE',
+};
+
+export const SYNTH_PRESET_LABELS: Readonly<Record<SynthPreset, string>> = {
+  pluck: 'PLUCK',
+  pad: 'PAD',
+  stab: 'STAB',
+  glass: 'GLASS',
+};
 
 export const SCALE_LABELS: Readonly<Record<ScaleId, string>> = {
   pentaMinor: 'PENTA MENOR',
@@ -140,6 +168,8 @@ export const TEXT = {
   modeHint: 'Modo',
   dice: 'DICE',
   diceHint: 'Patrón nuevo al azar en este modo',
+  soundSection: 'SONIDO',
+  soundHint: 'Sonido',
   cableHint: 'Cortar o reconectar el cable',
   missing: 'FALTA',
   audioBlocked: 'AUDIO BLOQUEADO · TOCÁ ▶',

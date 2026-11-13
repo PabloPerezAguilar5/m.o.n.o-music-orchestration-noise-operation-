@@ -2,13 +2,22 @@ import { css, html, LitElement, nothing, type PropertyValues, type TemplateResul
 import { customElement, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { BASS_MODES, gridFromBassPattern, type BassMode, type BassPattern } from '../../core/bass-patterns';
-import { ROOTS } from '../../core/bass-scales';
 import { kitLabel } from '../../core/drum-kits';
 import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
 import { clickAt } from '../../core/metronome';
 import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } from '../../core/nodes';
 import type { Pattern } from '../../core/patterns';
 import { randomSeed } from '../../core/random';
+import { ROOTS } from '../../core/scales';
+import {
+  gridFromSynthPattern,
+  SYNTH_DUR_ROW,
+  SYNTH_MODES,
+  synthDurLabels,
+  type SynthMode,
+  type SynthPattern,
+} from '../../core/synth-patterns';
+import { SYNTH_PRESETS, type SynthPreset } from '../../core/synth-voices';
 import { cues, pulse, store } from '../../state';
 import {
   BASS_MODE_LABELS,
@@ -20,6 +29,9 @@ import {
   ROW_LABELS,
   SCALE_LABELS,
   SECTION_LABELS,
+  SYNTH_MODE_LABELS,
+  SYNTH_PRESET_LABELS,
+  synthRowLabels,
   TEXT,
 } from '../labels';
 import { Selector } from '../store-controller';
@@ -239,6 +251,26 @@ export class MonoPanel extends LitElement {
       .modes {
         gap: clamp(4px, 0.8vw, 8px);
       }
+      /* Four keys in two rows of two, at every width (SYNTH: SONIDO, MODO). */
+      .quad {
+        display: grid;
+        grid-template-columns: repeat(2, auto);
+        grid-auto-rows: minmax(22px, 1fr);
+        align-items: stretch;
+        gap: 4px;
+        height: calc(var(--ks) + 14px);
+        box-sizing: content-box;
+      }
+      .quad .pk {
+        height: auto;
+        min-width: 0;
+        padding: 4px 8px 0;
+        font-size: 8px;
+      }
+      .quad .pk.led::before {
+        top: 3px;
+        height: 2px;
+      }
       /* Two controls stacked in the height of a knob and its caption (BASS: OSC, ESCALA). */
       .stack {
         flex-direction: column;
@@ -334,7 +366,10 @@ export class MonoPanel extends LitElement {
 
   private readonly selected = new Selector(this, store, (s) => s.selected);
   private readonly params = new Selector(this, store, (s) => s.params);
-  private readonly patterns = new Selector(this, store, (s) => s.patterns);
+  private readonly key = new Selector(this, store, (s) => s.key);
+  private readonly synth = new Selector(this, store, (s) => s.synth);
+  /** On/off view of the SYNTH pattern, recomputed only when the pattern changes. */
+  private synthGrid: { pattern: SynthPattern; grid: Pattern } | null = null;
   private readonly drone = new Selector(this, store, (s) => s.drone);
   private readonly distType = new Selector(this, store, (s) => s.distType);
   private readonly bpm = new Selector(this, store, (s) => s.transport.bpm);
@@ -389,6 +424,7 @@ export class MonoPanel extends LitElement {
           )}
           ${id === 'drum' ? [this.patternKeys(), this.kitKeys()] : nothing}
           ${id === 'bass' ? this.bassKeys() : nothing}
+          ${id === 'synth' ? this.synthKeys() : nothing}
           ${id === 'master' ? this.metronomeKeys() : nothing}
           <section>
             <h6>${TEXT.macroSection}</h6>
@@ -412,9 +448,10 @@ export class MonoPanel extends LitElement {
     if (audio.state === 'blocked') return TEXT.audioBlocked;
     if (audio.state === 'unavailable') return TEXT.audioUnavailable;
     const name = NODE_NAMES[id];
-    if (id === 'bass') {
-      const { root, scale } = this.bass.value;
-      return `${name} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
+    const { root, scale } = this.key.value;
+    if (id === 'bass') return `${name} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
+    if (id === 'synth') {
+      return `${name} · ${SYNTH_PRESET_LABELS[this.synth.value.preset]} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
     }
     if (id !== 'drum') return `${name} · ${NODE_CODES[id]}`;
 
@@ -511,12 +548,17 @@ export class MonoPanel extends LitElement {
     return this.bassGrid.grid;
   }
 
+  private synthGridFor(pattern: SynthPattern): Pattern {
+    if (this.synthGrid?.pattern !== pattern) this.synthGrid = { pattern, grid: gridFromSynthPattern(pattern) };
+    return this.synthGrid.grid;
+  }
+
   /**
-   * BASS: OSC (wave and sub), ESCALA (tonic and scale), MODO (fck-synth's five modes)
+   * BASS: OSC (wave and sub), ESCALA (the shared key), MODO (fck-synth's five modes)
    * and DICE, which makes a new pattern in the current mode.
    */
   private bassKeys(): TemplateResult[] {
-    const { wave, sub, root, scale, mode } = this.bass.value;
+    const { wave, sub, mode } = this.bass.value;
     return [
       html`<section data-section="osc">
         <h6>${TEXT.oscSection}</h6>
@@ -535,44 +577,81 @@ export class MonoPanel extends LitElement {
           </button>
         </div>
       </section>`,
-      html`<section data-section="key">
-        <h6>${TEXT.keySection}</h6>
-        <div class="kk stack">
-          <div class="stp">
-            <button class="pk" data-root="-1" aria-label=${TEXT.rootDown} @click=${() => this.onRoot(-1)}>−</button>
-            <span class="mini" id="root">${ROOTS[root]}</span>
-            <button class="pk" data-root="1" aria-label=${TEXT.rootUp} @click=${() => this.onRoot(1)}>+</button>
-          </div>
-          <div class="stp wide">
-            <button class="pk" data-scale="-1" aria-label=${TEXT.scaleDown} @click=${() => this.onScale(-1)}>−</button>
-            <span class="mini" id="scale">${SCALE_LABELS[scale]}</span>
-            <button class="pk" data-scale="1" aria-label=${TEXT.scaleUp} @click=${() => this.onScale(1)}>+</button>
-          </div>
-        </div>
-      </section>`,
-      html`<section data-section="mode">
-        <h6>${TEXT.modeSection}</h6>
-        <div class="kk modes">
-          ${BASS_MODES.map(
-            (id) => html`<button
-              class=${classMap({ pk: true, led: true, on: id === mode })}
-              data-mode=${id}
-              aria-label="${TEXT.modeHint} ${BASS_MODE_LABELS[id]}"
-              aria-pressed=${id === mode}
-              @click=${() => this.onMode(id)}
-            >
-              ${BASS_MODE_LABELS[id]}
-            </button>`,
-          )}
-        </div>
-      </section>`,
-      html`<section data-section="pattern">
-        <h6>${TEXT.patternSection}</h6>
-        <div class="kk">
-          <button class="pk" id="dice" aria-label=${TEXT.diceHint} @click=${this.onDice}>${TEXT.dice}</button>
-        </div>
-      </section>`,
+      this.keySection(),
+      this.ledKeys('mode', TEXT.modeSection, 'modes', BASS_MODES, BASS_MODE_LABELS, mode, (m) => this.onBassMode(m)),
+      this.diceSection(this.onBassDice),
     ];
+  }
+
+  /** SYNTH: SONIDO (presets), ESCALA (the shared key), MODO (DICE styles) and DICE. */
+  private synthKeys(): TemplateResult[] {
+    const { preset, mode } = this.synth.value;
+    return [
+      this.ledKeys('sound', TEXT.soundSection, 'quad', SYNTH_PRESETS, SYNTH_PRESET_LABELS, preset, (p) =>
+        this.onPreset(p),
+      ),
+      this.keySection(),
+      this.ledKeys('mode', TEXT.modeSection, 'quad', SYNTH_MODES, SYNTH_MODE_LABELS, mode, (m) => this.onSynthMode(m)),
+      this.diceSection(this.onSynthDice),
+    ];
+  }
+
+  /** ESCALA: tonic and scale, shared by BASS and SYNTH. */
+  private keySection(): TemplateResult {
+    const { root, scale } = this.key.value;
+    return html`<section data-section="key">
+      <h6>${TEXT.keySection}</h6>
+      <div class="kk stack">
+        <div class="stp">
+          <button class="pk" data-root="-1" aria-label=${TEXT.rootDown} @click=${() => this.onRoot(-1)}>−</button>
+          <span class="mini" id="root">${ROOTS[root]}</span>
+          <button class="pk" data-root="1" aria-label=${TEXT.rootUp} @click=${() => this.onRoot(1)}>+</button>
+        </div>
+        <div class="stp wide">
+          <button class="pk" data-scale="-1" aria-label=${TEXT.scaleDown} @click=${() => this.onScale(-1)}>−</button>
+          <span class="mini" id="scale">${SCALE_LABELS[scale]}</span>
+          <button class="pk" data-scale="1" aria-label=${TEXT.scaleUp} @click=${() => this.onScale(1)}>+</button>
+        </div>
+      </div>
+    </section>`;
+  }
+
+  /** A row of keys with LEDs, one lit: modes, presets. `layout` picks how they wrap. */
+  private ledKeys<T extends string>(
+    name: 'mode' | 'sound',
+    title: string,
+    layout: 'modes' | 'quad',
+    ids: readonly T[],
+    labels: Readonly<Record<T, string>>,
+    current: T,
+    pick: (id: T) => void,
+  ): TemplateResult {
+    return html`<section data-section=${name}>
+      <h6>${title}</h6>
+      <div class="kk ${layout}">
+        ${ids.map(
+          (id) => html`<button
+            class=${classMap({ pk: true, led: true, on: id === current })}
+            data-mode=${name === 'mode' ? id : nothing}
+            data-preset=${name === 'sound' ? id : nothing}
+            aria-label="${title} ${labels[id]}"
+            aria-pressed=${id === current}
+            @click=${() => pick(id)}
+          >
+            ${labels[id]}
+          </button>`,
+        )}
+      </div>
+    </section>`;
+  }
+
+  private diceSection(onDice: () => void): TemplateResult {
+    return html`<section data-section="pattern">
+      <h6>${TEXT.patternSection}</h6>
+      <div class="kk">
+        <button class="pk" id="dice" aria-label=${TEXT.diceHint} @click=${onDice}>${TEXT.dice}</button>
+      </div>
+    </section>`;
   }
 
   private knob(param: string, label: string, value: number, big: boolean): TemplateResult {
@@ -590,14 +669,15 @@ export class MonoPanel extends LitElement {
     switch (NODE_SPECS[id].zone) {
       case 'sequencer':
         return html`<mono-step-grid
-          .rows=${id === 'bass' ? bassRowLabels(this.bass.value.root, this.bass.value.scale) : ROW_LABELS[id]}
+          .rows=${this.rowLabels(id)}
           .pattern=${id === 'drum'
             ? this.drumGridFor(this.drum.value.pattern)
             : id === 'bass'
               ? this.bassGridFor(this.bass.value.pattern)
               : id === 'synth'
-                ? this.patterns.value[id]
+                ? this.synthGridFor(this.synth.value.pattern)
                 : []}
+          .texts=${id === 'synth' ? { row: SYNTH_DUR_ROW, values: synthDurLabels(this.synth.value.pattern) } : null}
           .step=${this.step.value}
           @step-toggle=${this.onStepToggle}
         ></mono-step-grid>`;
@@ -626,6 +706,14 @@ export class MonoPanel extends LitElement {
     }
   }
 
+  /** Step grid captions; BASS and SYNTH name their note rows after the key. */
+  private rowLabels(id: NodeId): readonly string[] {
+    const { root, scale } = this.key.value;
+    if (id === 'bass') return bassRowLabels(root, scale);
+    if (id === 'synth') return synthRowLabels(root, scale);
+    return ROW_LABELS[id];
+  }
+
   private onKnob(param: string, label: string, value: number): void {
     const id = this.selected.value;
     store.setParam(id, param, value);
@@ -643,7 +731,7 @@ export class MonoPanel extends LitElement {
     const { row, col } = event.detail;
     if (id === 'drum') store.toggleDrumStep(row, col);
     else if (id === 'bass') store.toggleBassStep(row, col);
-    else store.toggleStep(id, row, col);
+    else store.toggleSynthStep(row, col);
     pulse(id, PULSE_MS.step);
   };
 
@@ -657,23 +745,40 @@ export class MonoPanel extends LitElement {
     pulse('bass', PULSE_MS.type);
   };
 
+  /** Tonic and scale are shared: the reading names the node being looked at. */
   private onRoot(direction: 1 | -1): void {
-    store.nudgeBassRoot(direction);
-    this.reading = `${NODE_NAMES.bass} ${TEXT.root} ${ROOTS[store.getState().bass.root]}`;
+    store.nudgeRoot(direction);
+    this.reading = `${NODE_NAMES[this.selected.value]} ${TEXT.root} ${ROOTS[store.getState().key.root]}`;
   }
 
   private onScale(direction: 1 | -1): void {
-    store.nudgeBassScale(direction);
-    this.reading = `${NODE_NAMES.bass} ${TEXT.scale} ${SCALE_LABELS[store.getState().bass.scale]}`;
+    store.nudgeScale(direction);
+    this.reading = `${NODE_NAMES[this.selected.value]} ${TEXT.scale} ${SCALE_LABELS[store.getState().key.scale]}`;
   }
 
-  private onMode(mode: BassMode): void {
+  private onBassMode(mode: BassMode): void {
     store.setBassMode(mode);
     this.reading = `${NODE_NAMES.bass} ${TEXT.modeSection} ${BASS_MODE_LABELS[mode]}`;
   }
 
-  private readonly onDice = (): void => {
+  private readonly onBassDice = (): void => {
     store.randomizeBass(randomSeed);
+    this.reading = null;
+  };
+
+  private onSynthMode(mode: SynthMode): void {
+    store.setSynthMode(mode);
+    this.reading = `${NODE_NAMES.synth} ${TEXT.modeSection} ${SYNTH_MODE_LABELS[mode]}`;
+  }
+
+  private onPreset(preset: SynthPreset): void {
+    store.setSynthPreset(preset);
+    pulse('synth', PULSE_MS.type);
+    this.reading = `${NODE_NAMES.synth} ${TEXT.soundSection} ${SYNTH_PRESET_LABELS[preset]}`;
+  }
+
+  private readonly onSynthDice = (): void => {
+    store.randomizeSynth(randomSeed);
     this.reading = null;
   };
 

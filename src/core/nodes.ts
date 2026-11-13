@@ -13,12 +13,6 @@ export type SequencedId = (typeof SEQUENCED_IDS)[number];
 export const isSequenced = (id: NodeId): id is SequencedId =>
   (SEQUENCED_IDS as readonly NodeId[]).includes(id);
 
-/**
- * Sequenced nodes whose pattern is still a plain on/off grid. DRUM has hits with
- * velocity and BASS has notes, slides and accents; each keeps its own pattern.
- */
-export type GridPatternId = Exclude<SequencedId, 'drum' | 'bass'>;
-
 export const DIST_TYPES = ['soft', 'hard', 'crush'] as const;
 export type DistType = (typeof DIST_TYPES)[number];
 
@@ -66,7 +60,8 @@ export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
   synth: {
     params: ['wave', 'cutoff', 'resonance', 'attack', 'release', 'detune'],
     zone: 'sequencer',
-    rows: ['note', 'octave', 'accent'],
+    // Ten scale steps over two octaves (highest on top), then the length: see synth-patterns.ts.
+    rows: [...Array.from({ length: 10 }, (_, i) => `step${9 - i}`), 'length'],
   },
   drum: {
     params: DRUM_SECTIONS.flatMap((section) => section.params),

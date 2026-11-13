@@ -94,9 +94,19 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  *    Cables also gained an invisible, wide tap target (to cut and plug them back); it
  *    draws nothing, so every other state is still compared.
  */
+/*
+ * 7. panel-synth (stage 4): SYNTH became a real polyphonic instrument. The prototype's
+ *    three rows (NOTA, OCT, ACC) became eleven: one per note of two octaves of the key
+ *    (named with their octave, highest on top), so a step can hold a chord, and DUR,
+ *    with each step's length written on its key. The header gained SONIDO (PLUCK, PAD,
+ *    STAB, GLASS), ESCALA (shared with BASS), MODO (four DICE styles) and PATRÓN (DICE),
+ *    and the display shows sound and key. The knobs start where PLUCK sounds right
+ *    (ONDA keeps its prototype position). No prototype equivalent.
+ */
 const EXCLUDED_STATES: Readonly<Record<string, string>> = {
   'panel-drum': 'DRUM panel redesigned in stage 2 and after',
   'panel-bass': 'BASS panel redesigned in stage 3',
+  'panel-synth': 'SYNTH panel redesigned in stage 4',
 };
 
 const NODE_ORDER = ['synth', 'drum', 'bass', 'drone', 'dist', 'lfo', 'lead'] as const;

@@ -12,6 +12,7 @@ import {
   type NodeId,
 } from '../core/nodes';
 import { DEFAULT_PATTERNS } from '../core/patterns';
+import { DEFAULT_SYNTH_PATTERN } from '../core/synth-patterns';
 import { BPM_DEFAULT } from '../core/transport';
 import type { AppState, ParamValues } from './types';
 
@@ -37,6 +38,20 @@ const defaultBassParams = (): ParamValues => ({
   [MACRO_PARAM]: MACRO_DEFAULT,
 });
 
+/**
+ * SYNTH knobs: ONDA keeps the prototype's position (mostly saw); the rest start where
+ * the PLUCK preset sounds right (fast attack, medium release, some width).
+ */
+const defaultSynthParams = (): ParamValues => ({
+  wave: 0.35,
+  cutoff: 0.55,
+  resonance: 0.3,
+  attack: 0.05,
+  release: 0.35,
+  detune: 0.4,
+  [MACRO_PARAM]: MACRO_DEFAULT,
+});
+
 /** DRUM knobs are real controls: tone centred (original pitch), volume at unity. */
 const defaultDrumParams = (): ParamValues => {
   const values: Record<string, number> = { [MACRO_PARAM]: MACRO_DEFAULT };
@@ -54,12 +69,13 @@ export function createInitialState(): AppState {
   >;
   params.drum = defaultDrumParams();
   params.bass = defaultBassParams();
+  params.synth = defaultSynthParams();
   return {
     added: ['master'],
     selected: 'master',
     positions: DEFAULT_POSITIONS,
     params,
-    patterns: { synth: DEFAULT_PATTERNS.synth },
+    key: { root: 0, scale: 'pentaMinor' },
     // Starts with the prototype's pattern; the first press of RNDM replaces it.
     drum: {
       kit: INITIAL_KIT,
@@ -72,11 +88,17 @@ export function createInitialState(): AppState {
       seed: INITIAL_SEED,
       generation: 0,
       mode: 'pulse',
-      root: 0,
-      scale: 'pentaMinor',
       pattern: DEFAULT_BASS_PATTERN,
       wave: 'saw',
       sub: false,
+    },
+    // Starts with the prototype's NOTA steps; DICE replaces it.
+    synth: {
+      seed: INITIAL_SEED,
+      generation: 0,
+      mode: 'chords',
+      preset: 'pluck',
+      pattern: DEFAULT_SYNTH_PATTERN,
     },
     unplugged: [],
     drone: { x: 0.5, y: 0.5 },

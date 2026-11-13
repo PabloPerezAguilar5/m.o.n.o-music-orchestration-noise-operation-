@@ -21,6 +21,15 @@ export function softClipCurve(size = 2049): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+/** Peaks of the mix (linear, 1 = 0 dBFS) and the limiter's gain reduction (dB, ≤ 0). */
+export interface MixMeter {
+  /** The sum of every channel after VOL, before the limiter. */
+  readonly bus: number;
+  /** What leaves the master. */
+  readonly out: number;
+  readonly reduction: number;
+}
+
 /**
  * MASTER: one input channel per source (its level knob), summed into
  * VOL → limiter → soft clip → analyser. `output` goes to the speakers.
@@ -34,6 +43,8 @@ export class MasterBus implements AudioModule {
   private readonly channels = new Map<string, GainNode>();
   private readonly levels = new Map<string, number>();
   private readonly meter: Float32Array<ArrayBuffer>;
+  /** A side tap on the bus before the limiter, for mix() only. */
+  private readonly busTap: AnalyserNode;
 
   constructor(private readonly context: BaseAudioContext) {
     this.input = context.createGain();
@@ -56,6 +67,20 @@ export class MasterBus implements AudioModule {
     this.meter = new Float32Array(this.output.fftSize);
 
     this.input.connect(this.volume).connect(this.limiter).connect(this.clip).connect(this.output);
+    this.busTap = context.createAnalyser();
+    this.busTap.fftSize = this.output.fftSize;
+    this.volume.connect(this.busTap);
+  }
+
+  /** Peaks before and after the limiter over the last ~40 ms, and the limiter's reduction. */
+  mix(): MixMeter {
+    const peak = (analyser: AnalyserNode): number => {
+      analyser.getFloatTimeDomainData(this.meter);
+      let max = 0;
+      for (const sample of this.meter) max = Math.max(max, Math.abs(sample));
+      return max;
+    };
+    return { bus: peak(this.busTap), out: peak(this.output), reduction: this.limiter.reduction };
   }
 
   /** The mixer channel for a source, created on first use. */
@@ -95,5 +120,6 @@ export class MasterBus implements AudioModule {
     this.limiter.disconnect();
     this.clip.disconnect();
     this.output.disconnect();
+    this.busTap.disconnect();
   }
 }

@@ -7,15 +7,19 @@ patrones con semilla portada de fck-synth. Los loops de
 
 ## Modulos
 
+> **Etapa 4:** el DSP, el worklet y el modulo se extrajeron a un motor de voz
+> compartido con el SYNTH (`src/audio/voice/`), y la tonalidad paso a
+> `state.key`, compartida con el SYNTH. El sonido del BASS no cambio. Ver
+> `docs/SYNTH.md`.
+
 | Archivo | Que hace |
 | --- | --- |
-| `src/core/bass-scales.ts` | Tonicas, escalas de 5 grados, nota MIDI de cada grado (de fck-synth). |
+| `src/core/scales.ts` | Tonicas, escalas de 5 grados, nota MIDI de cada grado (de fck-synth). Compartido con el SYNTH. |
 | `src/core/bass-patterns.ts` | Pasos (nota, slide, acento, largo), patron inicial, edicion a mano, generador con semilla (5 modos + CAOS) y `BassSequencer` (pasos -> eventos de la voz). |
 | `src/core/bass-voices.ts` | Caracter de cada modo para la voz (gate, envolvente, decay, drive). |
-| `src/audio/bass/bass-dsp.ts` | La voz 303, muestra por muestra. TypeScript puro: sin Web Audio ni DOM. |
-| `src/audio/bass/bass-processor.ts` | El AudioWorkletProcessor: aplica cada evento en su muestra exacta y llama al DSP. |
-| `src/audio/bass/bass-messages.ts` | Protocolo de mensajes hilo principal -> worklet. |
-| `src/audio/bass/bass-module.ts` | Carga el worklet, crea el nodo, entra al grafo y traduce la escena a parametros. |
+| `src/audio/voice/` | Motor de voz compartido: voz, motor, worklet, modulo y pista (ver `docs/SYNTH.md`). |
+| `src/audio/bass/bass-voice.ts` | Diseno 303 del motor compartido y como las perillas del BASS se vuelven parametros. |
+| `src/audio/bass/bass-track.ts` | El BASS en el backend: secuenciador y gate del modo. |
 
 Todo el nucleo (`src/core`) sigue sin DOM ni Web Audio.
 
@@ -52,21 +56,23 @@ DSP. El nivel del acento tambien se suaviza.
 
 ### Interfaz para Rust/WebAssembly
 
-`BassDsp` (en `bass-dsp.ts`) es el limite pensado para reemplazar:
+`VoiceDsp` (en `src/audio/voice/engine.ts`, compartido con el SYNTH desde la
+etapa 4) es el limite pensado para reemplazar:
 
 ```ts
-interface BassDsp {
-  setParams(params: BassParams): void;   // numeros 0..1
-  noteOn(midi: number, accent: boolean, legato: boolean): void;
-  noteOff(): void;
+interface VoiceDsp {
+  setParams(params: EngineParams): void;  // numeros 0..1 y tiempos en segundos
+  noteOn(id: number, midi: number, accent: boolean, legato: boolean): void;
+  noteOff(id: number): void;
+  allOff(): void;
   render(out: Float32Array, start: number, end: number): void;
 }
 ```
 
 Solo numeros de entrada y un `Float32Array` de salida: se puede exportar desde
 Rust con `wasm-bindgen` sobre memoria compartida. El procesador
-(`bass-processor.ts`) se encarga de los tiempos y no cambiaria; solo
-instanciaria la version WASM en lugar de `Bass303`.
+(`voice-processor.ts`) se encarga de los tiempos y no cambiaria; solo
+instanciaria la version WASM en lugar de `VoiceEngine`.
 
 ## Secuencia, slide y acento
 

@@ -13,7 +13,8 @@ export function sceneFromState(state: AppState): AudioScene {
     ]),
   ) as Record<DrumRow, { volume: number; tone: number }>;
   const bassKnobs = state.params.bass;
-  const { bass } = state;
+  const synthKnobs = state.params.synth;
+  const { bass, synth, key } = state;
   return {
     bpm: state.transport.bpm,
     nodes: state.added,
@@ -22,19 +23,33 @@ export function sceneFromState(state: AppState): AudioScene {
       volume: master.volume ?? 0,
       drumLevel: master.drumLevel ?? 0,
       bassLevel: master.bassLevel ?? 0,
+      synthLevel: master.synthLevel ?? 0,
     },
     bass: {
       generation: bass.generation,
       pattern: bass.pattern,
       mode: bass.mode,
-      root: bass.root,
-      scale: bass.scale,
+      root: key.root,
+      scale: key.scale,
       cutoff: bassKnobs.cutoff ?? 0,
       resonance: bassKnobs.resonance ?? 0,
       decay: bassKnobs.decay ?? 0,
       drive: bassKnobs.drive ?? 0,
       wave: bass.wave,
       sub: bass.sub,
+    },
+    synth: {
+      generation: synth.generation,
+      pattern: synth.pattern,
+      preset: synth.preset,
+      root: key.root,
+      scale: key.scale,
+      wave: synthKnobs.wave ?? 0,
+      cutoff: synthKnobs.cutoff ?? 0,
+      resonance: synthKnobs.resonance ?? 0,
+      attack: synthKnobs.attack ?? 0,
+      release: synthKnobs.release ?? 0,
+      detune: synthKnobs.detune ?? 0,
     },
     drum: {
       kit: state.drum.kit,

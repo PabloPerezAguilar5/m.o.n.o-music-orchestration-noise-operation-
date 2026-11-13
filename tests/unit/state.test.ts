@@ -8,6 +8,7 @@ import {
 import { INSTRUMENT_IDS } from '../../src/core/nodes';
 import { DEFAULT_PATTERNS } from '../../src/core/patterns';
 import { Activity } from '../../src/state/activity';
+import { sceneFromState } from '../../src/state/scene';
 import { Store } from '../../src/state/store';
 
 describe('Store', () => {
@@ -94,10 +95,13 @@ describe('Store', () => {
     expect(store.getState()).toBe(before);
   });
 
-  it('toggles pattern steps', () => {
-    expect(store.getState().patterns.synth[0]?.[1]).toBe(false);
-    store.toggleStep('synth', 0, 1);
-    expect(store.getState().patterns.synth[0]?.[1]).toBe(true);
+  it('BASS and SYNTH share one key', () => {
+    store.nudgeRoot(1);
+    store.nudgeScale(1);
+    expect(store.getState().key).toEqual({ root: 1, scale: 'minor' });
+    const scene = sceneFromState(store.getState());
+    expect(scene.bass).toMatchObject({ root: 1, scale: 'minor' });
+    expect(scene.synth).toMatchObject({ root: 1, scale: 'minor' });
   });
 
   describe('cables', () => {

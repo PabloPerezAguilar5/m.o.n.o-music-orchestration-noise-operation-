@@ -1,4 +1,4 @@
-import { css, html, LitElement, type TemplateResult } from 'lit';
+import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { STEPS, type Pattern } from '../../core/patterns';
@@ -66,18 +66,45 @@ export class MonoStepGrid extends LitElement {
         outline: 2px solid #14141c;
         outline-offset: 1px;
       }
+      /* Many rows (SYNTH: ten notes and DUR): tighter, so they fit the zone. */
+      .sq.dense {
+        gap: 2px;
+      }
+      .dense .st {
+        min-height: 9px;
+        box-shadow: 0 1px 0 #0006;
+      }
+      .dense .st::before {
+        top: 1px;
+        height: 2px;
+      }
+      /* A value written on the key (SYNTH: the length of each step). */
+      .st b {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding-top: 2px;
+        font-size: 8px;
+        line-height: 1;
+        color: #1b1b22;
+        pointer-events: none;
+      }
     `,
   ];
 
   /** Row captions, top to bottom. */
   @property({ attribute: false }) rows: readonly string[] = [];
   @property({ attribute: false }) pattern: Pattern = [];
+  /** Text written on the keys of one row (e.g. SYNTH's DUR), or null. */
+  @property({ attribute: false }) texts: { readonly row: number; readonly values: readonly string[] } | null = null;
   /** Step being played, or -1. */
   @property({ type: Number }) step = -1;
 
   override render(): TemplateResult {
     return html`<div
-      class="sq"
+      class=${this.rows.length > 8 ? 'sq dense' : 'sq'}
       style="grid-template-rows:auto repeat(${this.rows.length},1fr)"
       @click=${this.onClick}
     >
@@ -88,8 +115,10 @@ export class MonoStepGrid extends LitElement {
 
   private row(label: string, row: number): TemplateResult {
     const cells = this.pattern[row] ?? [];
+    const texts = this.texts?.row === row ? this.texts.values : null;
     return html`<span>${label}</span>${COLUMNS.map((col) => {
         const active = cells[col] === true;
+        const text = texts?.[col] ?? '';
         return html`<button
           class=${classMap({
             st: true,
@@ -99,9 +128,9 @@ export class MonoStepGrid extends LitElement {
           })}
           data-r=${row}
           data-c=${col}
-          aria-label="${label} ${col + 1}"
+          aria-label="${label} ${col + 1}${text ? ` ${text}` : ''}"
           aria-pressed=${active}
-        ></button>`;
+        >${text ? html`<b>${text}</b>` : nothing}</button>`;
       })}`;
   }
 

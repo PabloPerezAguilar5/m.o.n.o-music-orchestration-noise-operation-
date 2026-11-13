@@ -54,14 +54,14 @@ test.describe('lienzo', () => {
     await addNode(page, 'synth');
     await expect(page.locator('#nd-synth')).toHaveClass(/sel/);
     await expect(page.locator('#cb-synth')).toHaveCount(1);
-    await expect(page.locator('#lcd')).toHaveText('SYNTH · SYN-01');
+    await expect(page.locator('#lcd')).toHaveText('SYNTH · PLUCK · C PENTA MENOR');
     await expect(page.locator('#play')).toHaveClass(/on/);
     await expect(page.locator('#hint')).toHaveCount(0);
     await expect(page.locator('.chip')).toHaveCount(0);
 
     // The playhead moves across the sequencer.
     const playheadColumn = () => page.locator('.st.ph').first().getAttribute('data-c');
-    await expect(page.locator('.st.ph')).toHaveCount(3);
+    await expect(page.locator('.st.ph')).toHaveCount(11); // one key per row of the SYNTH grid
     const before = await playheadColumn();
     await expect.poll(playheadColumn).not.toBe(before);
   });
@@ -180,7 +180,7 @@ test.describe('panel', () => {
     await page.click('#nd-drum');
     await expect(page.locator('.st')).toHaveCount(4 * 16);
     await page.click('#nd-synth');
-    await expect(page.locator('.st')).toHaveCount(3 * 16);
+    await expect(page.locator('.st')).toHaveCount(11 * 16); // ten notes over two octaves and DUR
   });
 
   test('una perilla gira al arrastrar, se lee en el display y conserva su valor', async ({
@@ -196,7 +196,7 @@ test.describe('panel', () => {
 
     await page.click('#nd-master');
     await page.click('#nd-synth');
-    await expect(page.locator('#lcd')).toHaveText('SYNTH · SYN-01');
+    await expect(page.locator('#lcd')).toHaveText('SYNTH · PLUCK · C PENTA MENOR');
     await expect(knob).toHaveAttribute('aria-valuenow', '108');
   });
 

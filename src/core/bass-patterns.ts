@@ -1,4 +1,5 @@
-import { DEGREES } from './bass-scales';
+import { DEGREES } from './scales';
+import type { VoiceEvent } from './voice-events';
 import type { Pattern } from './patterns';
 import { STEPS } from './patterns';
 import { createRng, streamSeed } from './random';
@@ -155,18 +156,8 @@ export function generateBassPattern(mode: BassMode, seed: number, chaos: number)
 
 // Sequencing ------------------------------------------------------------------------------------
 
-/** What the voice should do, at audio times. `id` ties a note-off to its note. */
-export type BassEvent =
-  | {
-      readonly type: 'on';
-      readonly time: number;
-      readonly id: number;
-      readonly midi: number;
-      readonly accent: boolean;
-      /** Glide from the sounding note without retriggering the envelopes. */
-      readonly legato: boolean;
-    }
-  | { readonly type: 'off'; readonly time: number; readonly id: number };
+/** What the voice should do, at audio times (the event type shared with SYNTH). */
+export type BassEvent = VoiceEvent;
 
 /** How long a note's gate stays open, as a fraction of its length in steps. */
 export const GATE_FRACTION = 0.55;

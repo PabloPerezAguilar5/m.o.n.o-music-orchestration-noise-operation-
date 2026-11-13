@@ -19,8 +19,12 @@ declare global {
     __audioLog: AudioLog;
     __mono: {
       level(): number;
+      mix(): { bus: number; out: number; reduction: number };
       clickLevel(): number;
-      store: { getState(): { drum: { seed: number } } };
+      store: {
+        getState(): { drum: { seed: number } };
+        setParam(id: string, param: string, value: number): void;
+      };
     };
   }
 }
@@ -481,5 +485,128 @@ test.describe('BASS', () => {
 
     expect(await peakLevel(page)).toBeGreaterThan(0.01);
     expect(errors).toEqual([]);
+  });
+});
+
+async function addNode(page: Page, id: string): Promise<void> {
+  await page.click('#add');
+  await page.click(`.chip[data-id="${id}"]`);
+}
+
+test.describe('SYNTH', () => {
+  test('suena con acordes, se enciende con el reloj y el cable se corta y reconecta en vivo', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'synth');
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    const column = () => page.locator('.st.ph').first().getAttribute('data-c');
+    const first = await column();
+    await expect.poll(column).not.toBe(first);
+    await expect(page.locator('#nd-synth.on')).toHaveCount(1, { timeout: 2000 });
+
+    await clickCable(page, 'synth');
+    await expect(page.locator('#cb-synth')).toHaveClass(/\boff\b/);
+    await page.waitForTimeout(2600); // up to one bar at 120 bpm, plus the release of a PLUCK
+    expect(await peakLevel(page)).toBeLessThan(0.001);
+
+    await clickCable(page, 'synth');
+    await page.waitForTimeout(2100);
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    expect(errors).toEqual([]);
+  });
+
+  test('panel: sonidos, modos, DICE, acordes, duración y la tonalidad compartida con el BASS', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'synth');
+    const lcd = page.locator('#lcd');
+    await expect(lcd).toHaveText('SYNTH · PLUCK · C PENTA MENOR');
+    await expect(page.locator('mono-step-grid .st')).toHaveCount(11 * 16);
+    await expect(page.locator('mono-knob')).toHaveCount(7); // ONDA CUTOFF RESO ATAQUE RELEASE DETUNE + CAOS
+
+    // Sounds: one LED on.
+    await expect(page.locator('[data-preset]')).toHaveText(['PLUCK', 'PAD', 'STAB', 'GLASS']);
+    await page.click('[data-preset="pad"]');
+    await expect(page.locator('[data-preset].on')).toHaveAttribute('data-preset', 'pad');
+    await expect(lcd).toHaveText('SYNTH SONIDO PAD');
+
+    // DICE modes and DICE: a new pattern each time.
+    await expect(page.locator('[data-mode]')).toHaveText(['ARPEGIO', 'ACORDES', 'MELODÍA', 'AMBIENTE']);
+    await page.click('[data-mode="arp"]');
+    await expect(page.locator('[data-mode].on')).toHaveAttribute('data-mode', 'arp');
+    let previous = await gridOf(page);
+    for (let press = 0; press < 3; press++) {
+      await page.click('#dice');
+      const next = await gridOf(page);
+      expect(next, `press ${press + 1}`).not.toBe(previous);
+      previous = next;
+    }
+
+    // A chord on step 2 (empty in AMBIENTE, whose chords fall on steps 1, 5, 9 and 13): three notes, then DUR.
+    await page.click('[data-mode="ambient"]');
+    for (const row of [9, 7, 5]) await expect(page.locator(`.st[data-r="${row}"][data-c="1"]`)).not.toHaveClass(/\ba\b/);
+    for (const row of [9, 7, 5]) await page.click(`.st[data-r="${row}"][data-c="1"]`);
+    for (const row of [9, 7, 5]) await expect(page.locator(`.st[data-r="${row}"][data-c="1"]`)).toHaveClass(/\ba\b/);
+    const dur = page.locator('.st[data-r="10"][data-c="1"]');
+    await expect(dur).toHaveText('1');
+    await dur.click();
+    await expect(dur).toHaveText('2');
+
+    // Rows named after the key over two octaves; the key is shared with BASS.
+    const captions = await page.locator('mono-step-grid .sq > span:not(.nm)').allTextContents();
+    expect(captions.filter(Boolean)).toEqual(['Bb4', 'G4', 'F4', 'Eb4', 'C4', 'Bb3', 'G3', 'F3', 'Eb3', 'C3', 'DUR']);
+    await page.click('[data-root="1"]');
+    await addNode(page, 'bass');
+    await expect(page.locator('#root')).toHaveText('C#');
+    await expect(lcd).toHaveText('BASS · C# PENTA MENOR');
+
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('mezcla', () => {
+  /** Highest peaks before and after the master's limiter, and its deepest reduction, over `ms`. */
+  const mixOver = (page: Page, ms: number) =>
+    page.evaluate(
+      (duration) =>
+        new Promise<{ bus: number; out: number; reduction: number }>((resolve) => {
+          let bus = 0;
+          let out = 0;
+          let reduction = 0;
+          const timer = setInterval(() => {
+            const m = window.__mono.mix();
+            bus = Math.max(bus, m.bus);
+            out = Math.max(out, m.out);
+            reduction = Math.min(reduction, m.reduction);
+          }, 15);
+          setTimeout(() => {
+            clearInterval(timer);
+            resolve({ bus, out, reduction });
+          }, duration);
+        }),
+      ms,
+    );
+
+  test('DRUM, BASS y SYNTH juntos no pasan de 0 dBFS ni hacen trabajar de más al limitador', async ({ page }) => {
+    await page.goto('/');
+    for (const id of ['drum', 'bass', 'synth']) await addNode(page, id);
+    await page.waitForTimeout(2500); // every module joins at a bar line
+    const defaults = await mixOver(page, 6000);
+    // The sum itself stays under full scale; the limiter only shaves a little.
+    expect(defaults.bus).toBeGreaterThan(0.2);
+    expect(defaults.bus).toBeLessThan(1);
+    expect(defaults.out).toBeLessThan(1);
+    expect(defaults.reduction).toBeGreaterThan(-3);
+
+    // Every MASTER level and VOL at full: the limiter and the soft clip still keep it under 0 dBFS.
+    for (const param of ['drumLevel', 'bassLevel', 'synthLevel', 'volume']) {
+      await page.evaluate((p) => window.__mono.store.setParam('master', p, 1), param);
+    }
+    const loud = await mixOver(page, 4000);
+    expect(loud.bus).toBeGreaterThan(defaults.bus);
+    expect(loud.out).toBeLessThan(1);
   });
 });

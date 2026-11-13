@@ -1,5 +1,3 @@
-import type { GridPatternId } from './nodes';
-
 export const STEPS = 16;
 
 /** Rows of 16 on/off steps. Treated as immutable. */
@@ -9,11 +7,11 @@ const parse = (rows: readonly string[]): Pattern =>
   rows.map((row) => Array.from(row, (char) => char === 'x'));
 
 /**
- * Starting grids from the prototype. DRUM's becomes its first pattern; BASS starts
- * from DEFAULT_BASS_PATTERN (bass-patterns.ts), which keeps the prototype's steps.
+ * Starting grid of DRUM, from the prototype. BASS and SYNTH have their own pattern
+ * types and start from DEFAULT_BASS_PATTERN and DEFAULT_SYNTH_PATTERN, which keep the
+ * prototype's steps.
  */
-export const DEFAULT_PATTERNS: Readonly<Record<GridPatternId | 'drum', Pattern>> = {
-  synth: parse(['x.x..x.x..x.x..x', '......x.......x.', 'x...x...x...x...']),
+export const DEFAULT_PATTERNS: Readonly<Record<'drum', Pattern>> = {
   drum: parse([
     'x...x...x...x...',
     '....x.......x...',

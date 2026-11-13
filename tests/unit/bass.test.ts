@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Bass303, DEFAULT_BASS_PARAMS, polyBlep, softClip, type BassParams } from '../../src/audio/bass/bass-dsp';
 import {
   BASS_ACCENT_ROW,
   BASS_MODES,
@@ -15,7 +14,7 @@ import {
   type BassPattern,
   type BassStep,
 } from '../../src/core/bass-patterns';
-import { bassMidi, degreeName, midiToHz, ROOTS, SCALE_IDS, SCALE_INTERVALS } from '../../src/core/bass-scales';
+import { bassMidi, degreeName, midiToHz, ROOTS, SCALE_IDS, SCALE_INTERVALS } from '../../src/core/scales';
 import { STEPS } from '../../src/core/patterns';
 import { Store } from '../../src/state/store';
 
@@ -202,9 +201,8 @@ describe('BASS in the store', () => {
   });
 
   it('starts in C minor pentatonic, PULSE, saw, no sub, with the prototype steps', () => {
+    expect(store.getState().key).toEqual({ root: 0, scale: 'pentaMinor' });
     expect(store.getState().bass).toMatchObject({
-      root: 0,
-      scale: 'pentaMinor',
       mode: 'pulse',
       wave: 'saw',
       sub: false,
@@ -235,13 +233,13 @@ describe('BASS in the store', () => {
   });
 
   it('steps tonic and scale around, and flips wave and sub', () => {
-    store.nudgeBassRoot(-1);
-    expect(store.getState().bass.root).toBe(11);
-    store.nudgeBassRoot(1);
-    store.nudgeBassRoot(1);
-    expect(store.getState().bass.root).toBe(1);
-    store.nudgeBassScale(-1);
-    expect(store.getState().bass.scale).toBe('dorian');
+    store.nudgeRoot(-1);
+    expect(store.getState().key.root).toBe(11);
+    store.nudgeRoot(1);
+    store.nudgeRoot(1);
+    expect(store.getState().key.root).toBe(1);
+    store.nudgeScale(-1);
+    expect(store.getState().key.scale).toBe('dorian');
     store.toggleBassWave();
     store.toggleBassSub();
     expect(store.getState().bass).toMatchObject({ wave: 'square', sub: true });
@@ -254,115 +252,3 @@ describe('BASS in the store', () => {
   });
 });
 
-describe('303 voice (DSP)', () => {
-  const RATE = 48000;
-  const render = (voice: Bass303, seconds: number): Float32Array => {
-    const out = new Float32Array(Math.round(seconds * RATE));
-    for (let i = 0; i < out.length; i += 128) voice.render(out, i, Math.min(out.length, i + 128));
-    return out;
-  };
-  const rms = (x: Float32Array) => Math.sqrt(x.reduce((sum, v) => sum + v * v, 0) / x.length);
-  const peak = (x: Float32Array) => x.reduce((max, v) => Math.max(max, Math.abs(v)), 0);
-  const voiceWith = (params: Partial<BassParams> = {}) => {
-    const voice = new Bass303(RATE);
-    voice.setParams({ ...DEFAULT_BASS_PARAMS, ...params });
-    return voice;
-  };
-
-  it('PolyBLEP corrects only near a discontinuity', () => {
-    const dt = 0.01;
-    expect(polyBlep(0.5, dt)).toBe(0);
-    expect(polyBlep(0, dt)).toBe(-1);
-    expect(polyBlep(0.999999, dt)).toBeCloseTo(1, 3);
-    expect(softClip(0)).toBe(0);
-    expect(softClip(10)).toBe(1);
-    expect(softClip(0.5)).toBeCloseTo(Math.tanh(0.5), 2);
-  });
-
-  it('is silent until a note, then sounds, bounded and finite', () => {
-    const voice = voiceWith();
-    expect(peak(render(voice, 0.05))).toBe(0);
-    voice.noteOn(36, false, false);
-    const out = render(voice, 0.3);
-    expect(rms(out)).toBeGreaterThan(0.01);
-    expect(peak(out)).toBeLessThan(1);
-    expect(out.every(Number.isFinite)).toBe(true);
-  });
-
-  it('stays bounded at full resonance and drive, saw and square, with sub', () => {
-    for (const wave of [0, 1]) {
-      const voice = voiceWith({ cutoff: 1, resonance: 1, drive: 1, sub: 1, wave, envMod: 1 });
-      voice.noteOn(48, true, false);
-      const out = render(voice, 0.5);
-      expect(out.every(Number.isFinite)).toBe(true);
-      expect(peak(out)).toBeLessThan(1);
-    }
-  });
-
-  it('releases after note off', () => {
-    const voice = voiceWith();
-    voice.noteOn(36, false, false);
-    render(voice, 0.2);
-    voice.noteOff();
-    render(voice, 0.1);
-    expect(voice.sounding).toBe(false);
-    expect(peak(render(voice, 0.05))).toBeLessThan(1e-3);
-  });
-
-  it('accent is louder and brighter', () => {
-    const play = (accent: boolean) => {
-      const voice = voiceWith({ cutoff: 0.3, resonance: 0.2, drive: 0 });
-      voice.noteOn(36, accent, false);
-      return render(voice, 0.08);
-    };
-    expect(rms(play(true))).toBeGreaterThan(rms(play(false)) * 1.2);
-    expect(brightness(play(true))).toBeGreaterThan(brightness(play(false)));
-  });
-
-  it('slide glides the pitch over a few tens of ms; a normal note jumps', () => {
-    const voice = voiceWith();
-    voice.noteOn(36, false, false);
-    render(voice, 0.05);
-    voice.noteOn(48, false, true);
-    render(voice, 0.01);
-    const midway = voice.frequency;
-    expect(midway).toBeGreaterThan(midiToHz(36) * 1.05);
-    expect(midway).toBeLessThan(midiToHz(48) * 0.95);
-    render(voice, 0.2);
-    expect(voice.frequency).toBeCloseTo(midiToHz(48), 0);
-
-    const jump = voiceWith();
-    jump.noteOn(36, false, false);
-    render(jump, 0.05);
-    jump.noteOn(48, false, false);
-    expect(jump.frequency).toBeCloseTo(midiToHz(48), 6);
-  });
-
-  /** High-frequency share of a signal: energy of its slope over its energy. */
-  const brightness = (x: Float32Array) => {
-    const slope = x.subarray(1).map((v, i) => v - x[i]!);
-    return rms(slope) / rms(x);
-  };
-
-  it('legato keeps the envelopes; a retrigger reopens the filter', () => {
-    const after = (legato: boolean) => {
-      const voice = voiceWith({ cutoff: 0.2, resonance: 0, envMod: 1, decay: 0.1 });
-      voice.noteOn(36, false, false);
-      render(voice, 0.4); // the filter envelope has closed
-      voice.noteOn(36, false, legato);
-      return brightness(render(voice, 0.03));
-    };
-    expect(after(false)).toBeGreaterThan(after(true) * 1.5);
-  });
-
-  it('parameter jumps are smoothed: no sample-to-sample step bigger than the signal allows', () => {
-    const voice = voiceWith({ cutoff: 0.1, drive: 0 });
-    voice.noteOn(36, false, false);
-    render(voice, 0.1);
-    const before = render(voice, 0.002);
-    voice.setParams({ ...DEFAULT_BASS_PARAMS, cutoff: 1, drive: 1, wave: 1, sub: 1 });
-    const after = render(voice, 0.004);
-    const first = after[0]! - before[before.length - 1]!;
-    expect(Math.abs(first)).toBeLessThan(0.05);
-  });
-});

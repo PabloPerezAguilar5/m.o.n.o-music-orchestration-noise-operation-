@@ -5,11 +5,17 @@ import {
   toggleBassCell,
   type BassMode,
 } from '../core/bass-patterns';
-import { SCALE_IDS } from '../core/bass-scales';
+import { SCALE_IDS } from '../core/scales';
 import { generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
-import { MACRO_PARAM, type DistType, type GridPatternId, type NodeId } from '../core/nodes';
-import { toggleStep } from '../core/patterns';
+import { MACRO_PARAM, type DistType, type NodeId } from '../core/nodes';
+import {
+  generateSynthPattern,
+  sameSynthGrid,
+  toggleSynthCell,
+  type SynthMode,
+} from '../core/synth-patterns';
+import type { SynthPreset } from '../core/synth-voices';
 import { BPM_NUDGE, clampBpm } from '../core/transport';
 import { Emitter, type Source } from './emitter';
 import { createInitialState } from './initial';
@@ -82,7 +88,7 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ positions: { ...this.state.positions, [id]: clampNodePosition(point) } });
   }
 
-  /** Sets a knob. On DRUM and BASS, CAOS regenerates the pattern from the current seed. */
+  /** Sets a knob. On DRUM, BASS and SYNTH, CAOS regenerates the pattern from the current seed. */
   setParam(id: NodeId, param: string, value: number): void {
     const current = this.state.params[id];
     if (!(param in current)) return;
@@ -94,16 +100,28 @@ export class Store extends Emitter implements Source<AppState> {
     } else if (id === 'bass' && param === MACRO_PARAM) {
       const { bass } = this.state;
       this.update({ params, bass: this.regeneratedBass(bass.mode, bass.seed, next) });
+    } else if (id === 'synth' && param === MACRO_PARAM) {
+      const { synth } = this.state;
+      this.update({ params, synth: this.regeneratedSynth(synth.mode, synth.seed, next) });
     } else {
       this.update({ params });
     }
   }
 
-  toggleStep(id: GridPatternId, row: number, col: number): void {
-    const current = this.state.patterns[id];
-    const next = toggleStep(current, row, col);
-    if (next === current) return;
-    this.update({ patterns: { ...this.state.patterns, [id]: next } });
+  // Key (shared by BASS and SYNTH) ------------------------------------------------------------
+
+  /** Steps the tonic up or down a semitone, wrapping around the octave. */
+  nudgeRoot(direction: 1 | -1): void {
+    const { key } = this.state;
+    this.update({ key: { ...key, root: (key.root + direction + 12) % 12 } });
+  }
+
+  /** Steps through the scales, wrapping around. */
+  nudgeScale(direction: 1 | -1): void {
+    const { key } = this.state;
+    const index = SCALE_IDS.indexOf(key.scale);
+    const scale = SCALE_IDS[(index + direction + SCALE_IDS.length) % SCALE_IDS.length]!;
+    this.update({ key: { ...key, scale } });
   }
 
   /** Hand edit of a DRUM step: keeps the generation, so it sounds from the next step. */
@@ -159,20 +177,6 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ bass: this.regeneratedBass(mode, bass.seed, this.state.params.bass[MACRO_PARAM] ?? 0) });
   }
 
-  /** Steps the tonic up or down a semitone, wrapping around the octave. */
-  nudgeBassRoot(direction: 1 | -1): void {
-    const { bass } = this.state;
-    this.update({ bass: { ...bass, root: (bass.root + direction + 12) % 12 } });
-  }
-
-  /** Steps through the scales, wrapping around. */
-  nudgeBassScale(direction: 1 | -1): void {
-    const { bass } = this.state;
-    const index = SCALE_IDS.indexOf(bass.scale);
-    const scale = SCALE_IDS[(index + direction + SCALE_IDS.length) % SCALE_IDS.length]!;
-    this.update({ bass: { ...bass, scale } });
-  }
-
   toggleBassWave(): void {
     const { bass } = this.state;
     this.update({ bass: { ...bass, wave: bass.wave === 'saw' ? 'square' : 'saw' } });
@@ -191,6 +195,52 @@ export class Store extends Emitter implements Source<AppState> {
       seed,
       generation: bass.generation + 1,
       pattern: generateBassPattern(mode, seed, chaos),
+    };
+  }
+
+  // SYNTH ---------------------------------------------------------------------------------------
+
+  /** Hand edit of the SYNTH grid (a chord note or DUR). Keeps the generation: it sounds from the next step. */
+  toggleSynthStep(row: number, col: number): void {
+    const { synth } = this.state;
+    const pattern = toggleSynthCell(synth.pattern, row, col);
+    if (pattern === synth.pattern) return;
+    this.update({ synth: { ...synth, pattern } });
+  }
+
+  /** DICE: a pattern in the current mode from a new seed, always different on the grid. */
+  randomizeSynth(nextSeed: () => number): void {
+    const { synth } = this.state;
+    const chaos = this.state.params.synth[MACRO_PARAM] ?? 0;
+    let next = this.regeneratedSynth(synth.mode, nextSeed() >>> 0, chaos);
+    for (let attempt = 1; attempt < RANDOMIZE_ATTEMPTS && sameSynthGrid(next.pattern, synth.pattern); attempt++) {
+      next = this.regeneratedSynth(synth.mode, nextSeed() >>> 0, chaos);
+    }
+    this.update({ synth: next });
+  }
+
+  /** Picks a DICE mode and plays a pattern in it from the current seed. */
+  setSynthMode(mode: SynthMode): void {
+    const { synth } = this.state;
+    if (synth.mode === mode) return;
+    this.update({ synth: this.regeneratedSynth(mode, synth.seed, this.state.params.synth[MACRO_PARAM] ?? 0) });
+  }
+
+  /** Picks the sound (PLUCK, PAD, STAB, GLASS). The pattern stays. */
+  setSynthPreset(preset: SynthPreset): void {
+    const { synth } = this.state;
+    if (synth.preset === preset) return;
+    this.update({ synth: { ...synth, preset } });
+  }
+
+  private regeneratedSynth(mode: SynthMode, seed: number, chaos: number): AppState['synth'] {
+    const { synth } = this.state;
+    return {
+      ...synth,
+      mode,
+      seed,
+      generation: synth.generation + 1,
+      pattern: generateSynthPattern(mode, seed, chaos),
     };
   }
 

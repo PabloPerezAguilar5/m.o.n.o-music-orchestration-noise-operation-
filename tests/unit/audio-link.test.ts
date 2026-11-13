@@ -125,8 +125,30 @@ describe('linkAudio (store ↔ backend)', () => {
     expect(backend.bassEvents.some((event) => event.type === 'on')).toBe(true);
   });
 
+  it('SYNTH plays its chords on the shared clock, lights up, and its cable cuts it', () => {
+    store.addNode('synth');
+    for (let ms = 0; ms <= 950; ms += 50) backend.advanceTo(ms / 1000);
+    // Steps 0..7 of the default pattern: a 3-note chord on 0, single notes on 2, 5 and 7.
+    const ons = backend.synthEvents.filter((event) => event.type === 'on');
+    expect(ons.map((event) => event.time)).toEqual([0, 0, 0, 0.25, 0.625, 0.875]);
+    expect(pulses.filter((p) => p.id === 'synth')).toHaveLength(4);
+
+    store.toggleCable('synth');
+    const before = backend.synthEvents.length;
+    for (let ms = 1000; ms <= 2000; ms += 50) backend.advanceTo(ms / 1000);
+    expect(backend.synthEvents).toHaveLength(before);
+  });
+
+  it('BASS, DRUM and SYNTH light up together on a shared step', () => {
+    store.addNode('drum');
+    store.addNode('bass');
+    store.addNode('synth');
+    backend.advanceTo(0);
+    expect(pulses.map((p) => p.id)).toEqual(expect.arrayContaining(['drum', 'bass', 'synth']));
+  });
+
   it('forwards BASS key, knobs and keys as scenes', () => {
-    store.nudgeBassRoot(1);
+    store.nudgeRoot(1);
     store.setParam('bass', 'cutoff', 0.8);
     store.toggleBassSub();
     expect(backend.scenes.at(-1)!.bass).toMatchObject({ root: 1, cutoff: 0.8, sub: true });

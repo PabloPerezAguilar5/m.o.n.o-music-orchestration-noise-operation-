@@ -19,8 +19,7 @@ export function linkAudio(
 ): () => void {
   const onStep = (event: StepEvent): void => {
     store.setStep(event.step);
-    const { patterns } = store.getState();
-    for (const { id, ms } of pulsesAt(event.step, patterns, event.sounding)) pulse(id, ms);
+    for (const { id, ms } of pulsesAt(event.step, event.sounding)) pulse(id, ms);
   };
 
   let playing = false;
@@ -35,6 +34,9 @@ export function linkAudio(
       state.drum,
       state.params.bass,
       state.bass,
+      state.params.synth,
+      state.synth,
+      state.key,
       state.unplugged,
       state.transport.bpm,
       state.metronome,

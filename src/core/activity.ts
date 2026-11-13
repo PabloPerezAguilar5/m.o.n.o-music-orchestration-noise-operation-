@@ -1,5 +1,4 @@
-import type { GridPatternId, NodeId } from './nodes';
-import { hasHitAt, type Pattern } from './patterns';
+import type { NodeId } from './nodes';
 
 /** A node lighting up for a moment. */
 export interface Pulse {
@@ -13,18 +12,13 @@ export const HIT_PULSE_MS = 170;
 /**
  * Which nodes light up on a step.
  *
- * `sounding` are the nodes the audio engine really played on this step (DRUM and BASS):
- * they light up from that. The other nodes do not make sound yet, so until their own
- * stage they keep the stage 1 simulation: SYNTH on its pattern, DISTORSION, DRONE and
- * MASTER on each beat, LFO every other step.
+ * `sounding` are the nodes the audio engine really played on this step (DRUM, BASS and
+ * SYNTH): they light up from that. The other nodes do not make sound yet, so until
+ * their own stage they keep the stage 1 simulation: DISTORSION, DRONE and MASTER on each
+ * beat, LFO every other step.
  */
-export function pulsesAt(
-  step: number,
-  patterns: Readonly<Record<GridPatternId, Pattern>>,
-  sounding: readonly NodeId[],
-): Pulse[] {
+export function pulsesAt(step: number, sounding: readonly NodeId[]): Pulse[] {
   const pulses: Pulse[] = sounding.map((id) => ({ id, ms: HIT_PULSE_MS }));
-  if (hasHitAt(patterns.synth, step)) pulses.push({ id: 'synth', ms: HIT_PULSE_MS });
   if (step % 4 === 0) {
     pulses.push({ id: 'dist', ms: 520 }, { id: 'drone', ms: 520 }, { id: 'master', ms: 220 });
   }

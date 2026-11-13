@@ -1,5 +1,7 @@
 import type { BassMode, BassPattern } from './bass-patterns';
-import type { ScaleId } from './bass-scales';
+import type { ScaleId } from './scales';
+import type { SynthPattern } from './synth-patterns';
+import type { SynthPreset } from './synth-voices';
 import type { DrumPattern } from './drum-patterns';
 import type { DrumRow, NodeId } from './nodes';
 
@@ -41,6 +43,23 @@ export interface BassScene {
   readonly sub: boolean;
 }
 
+export interface SynthScene {
+  /** Changes whenever the pattern is regenerated (DICE, mode, CAOS). Hand edits keep it. */
+  readonly generation: number;
+  readonly pattern: SynthPattern;
+  readonly preset: SynthPreset;
+  /** The key shared with BASS. */
+  readonly root: number;
+  readonly scale: ScaleId;
+  /** Knob values, 0..1. */
+  readonly wave: number;
+  readonly cutoff: number;
+  readonly resonance: number;
+  readonly attack: number;
+  readonly release: number;
+  readonly detune: number;
+}
+
 export interface AudioScene {
   readonly bpm: number;
   /** Nodes on the canvas. */
@@ -52,9 +71,11 @@ export interface AudioScene {
     readonly volume: number;
     readonly drumLevel: number;
     readonly bassLevel: number;
+    readonly synthLevel: number;
   };
   readonly drum: DrumScene;
   readonly bass: BassScene;
+  readonly synth: SynthScene;
   readonly metronome: MetronomeScene;
 }
 

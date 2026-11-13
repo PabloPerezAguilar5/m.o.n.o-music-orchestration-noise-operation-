@@ -1,15 +1,17 @@
 import { INITIAL_AUDIO_STATUS, type AudioScene, type AudioStatus } from '../core/audio-scene';
-import { BassSequencer, type BassEvent } from '../core/bass-patterns';
-import { bassMidi } from '../core/bass-scales';
+import { BassSequencer } from '../core/bass-patterns';
 import { clickAt, type Click } from '../core/metronome';
 import type { NodeId } from '../core/nodes';
+import { bassMidi, synthMidi } from '../core/scales';
 import { LookaheadScheduler } from '../core/scheduler';
+import { SynthSequencer } from '../core/synth-patterns';
+import type { VoiceEvent } from '../core/voice-events';
 import type { AudioBackend, StatusListener, StepListener } from './backend';
 
 /**
  * Soundless backend for tests. Nothing runs on its own: the test moves time with
- * advanceTo(), and steps are delivered as they become due. DRUM counts as sounding
- * on a step when it is on the canvas and its pattern has a hit there.
+ * advanceTo(), and steps are delivered as they become due. A node counts as sounding
+ * on a step when its cable is plugged in and it plays something there.
  */
 export class SilentBackend implements AudioBackend {
   readonly scenes: AudioScene[] = [];
@@ -17,9 +19,11 @@ export class SilentBackend implements AudioBackend {
   readonly auditions: string[] = [];
   /** Metronome clicks, with the time the scheduler gave their step. */
   readonly clicks: { step: number; time: number; click: Click }[] = [];
-  /** BASS voice events, as the real backend would send them to its worklet. */
-  readonly bassEvents: BassEvent[] = [];
+  /** Voice events, as the real backend would send them to the worklets. */
+  readonly bassEvents: VoiceEvent[] = [];
+  readonly synthEvents: VoiceEvent[] = [];
   private readonly bassSequencer = new BassSequencer();
+  private readonly synthSequencer = new SynthSequencer();
   unlocks = 0;
   private readonly scheduler = new LookaheadScheduler();
   private readonly statusListeners = new Set<StatusListener>();
@@ -43,6 +47,7 @@ export class SilentBackend implements AudioBackend {
     this.listener = null;
     this.scheduler.stop(this.now);
     this.bassSequencer.reset();
+    this.synthSequencer.reset();
   }
 
   update(scene: AudioScene): void {
@@ -80,6 +85,12 @@ export class SilentBackend implements AudioBackend {
         const events = this.bassSequencer.step(pattern, step, time, duration, (d) => bassMidi(root, scale, d));
         this.bassEvents.push(...events);
         if (events.some((event) => event.type === 'on')) sounding.push('bass');
+      }
+      if (scene?.cables.includes('synth')) {
+        const { pattern, root, scale } = scene.synth;
+        const events = this.synthSequencer.step(pattern, step, time, duration, (n) => synthMidi(root, scale, n));
+        this.synthEvents.push(...events);
+        if (events.some((event) => event.type === 'on')) sounding.push('synth');
       }
       this.listener?.({ step, sounding });
     }
