@@ -25,6 +25,13 @@ declare global {
         getState(): { drum: { seed: number } };
         setParam(id: string, param: string, value: number): void;
       };
+      /** LEAD and DRONE played by hand: a test finger, like the panel's. */
+      live: {
+        keyDown(touch: number, semitone: number): void;
+        keyUp(touch: number): void;
+        padDown(touch: number, point: { x: number; y: number }): void;
+        padUp(touch: number): void;
+      };
     };
   }
 }
@@ -673,5 +680,208 @@ test.describe('BORRAR', () => {
     await page.click('#dice');
     await expect(page.locator('mono-step-grid .st.a').first()).toBeVisible();
     expect(errors).toEqual([]);
+  });
+});
+
+/** Waits until the master is silent: release and effect tails rung out (DRONE's reverb is long). */
+async function waitQuiet(page: Page, timeout = 10_000, step = 'silencio'): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.__mono.level()), { timeout, intervals: [100], message: step })
+    .toBeLessThan(0.001);
+}
+
+/** Presses a LEAD key with the mouse and keeps it down. */
+async function holdKey(page: Page, index: number): Promise<void> {
+  const box = (await page.locator('mono-keys .wk').nth(index).boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height - 8);
+  await page.mouse.down();
+}
+
+test.describe('LEAD', () => {
+  test('suena mientras se toca, también detenido, y el cable se corta y reconecta en el acto', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'lead');
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+    await page.click('#play'); // stopped: LEAD is played by hand, it does not need the transport
+
+    await holdKey(page, 4);
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await expect(page.locator('#nd-lead')).toHaveClass(/\bon\b/);
+    await page.mouse.up();
+    await waitQuiet(page);
+    await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
+
+    // A finger held down, then the cable cut: silent at once, the note released.
+    await page.evaluate(() => window.__mono.live.keyDown(1, 0));
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await clickCable(page, 'lead');
+    await expect(page.locator('#cb-lead')).toHaveClass(/\boff\b/);
+    await waitQuiet(page, 2000, 'cable cortado');
+    await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
+    // Plugged back, nothing comes back by itself: the note was released, not muted.
+    await clickCable(page, 'lead');
+    await expect(page.locator('#cb-lead')).not.toHaveClass(/\boff\b/);
+    expect(await peakLevel(page), 'cable reconectado').toBeLessThan(0.001);
+    // And the keys play again.
+    await holdKey(page, 7);
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await page.mouse.up();
+    expect(errors).toEqual([]);
+  });
+
+  test('parar el transporte o quitar el nodo suelta la nota que suena', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'lead');
+    await expect(page.locator('#play')).toHaveClass(/on/);
+
+    await page.evaluate(() => window.__mono.live.keyDown(1, 0));
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await page.click('#play');
+    await waitQuiet(page, 2000);
+
+    await page.click('#play');
+    await page.evaluate(() => window.__mono.live.keyDown(2, 5));
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await page.click('#rm');
+    await waitQuiet(page, 2000);
+    await expect(page.locator('#nd-lead')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('OCT y SCALE LOCK cambian lo que toca cada tecla; la escala es la compartida', async ({ page }) => {
+    await page.goto('/');
+    await addNode(page, 'lead');
+    await expect(page.locator('#octave')).toHaveText('OCT C4');
+    await page.click('#oct-down');
+    await expect(page.locator('#octave')).toHaveText('OCT C3');
+    await expect(page.locator('mono-keys .wk').first()).toHaveText('C3');
+    await page.click('#lock');
+    await expect(page.locator('mono-keys .wk.out').first()).toBeVisible();
+    // ESCALA is shared: changing the tonic here changes it for BASS and SYNTH.
+    await page.click('[data-root="1"]');
+    await expect(page.locator('#root')).toHaveText('C#');
+    await page.click('#nd-master');
+    await page.click('#nd-lead');
+    await expect(page.locator('#lcd')).toHaveText('LEAD · C3-C5 · C# PENTA MENOR');
+    await addNode(page, 'bass');
+    await expect(page.locator('#lcd')).toHaveText('BASS · C# PENTA MENOR');
+  });
+});
+
+test.describe('DRONE', () => {
+  test('TOUCH suena mientras se toca; HOLD sigue al soltar; STOP y CLEAR callan; hasta seis capas', async ({ page }) => {
+    test.setTimeout(60_000);
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'drone');
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+    const pad = page.locator('.xy');
+    const box = (await pad.boundingBox())!;
+
+    // TOUCH: sounds while the finger is down, the node lit; silent after it lifts.
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.4);
+    await page.mouse.down();
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await expect(page.locator('#nd-drone')).toHaveClass(/\bon\b/);
+    await expect(page.locator('#layers')).toHaveText('CAPAS 1/6');
+    await page.mouse.up();
+    await expect(page.locator('#layers')).toHaveText('CAPAS 0/6');
+    await waitQuiet(page);
+    await expect(page.locator('#nd-drone')).not.toHaveClass(/\bon\b/);
+
+    // HOLD: the layers stay after the fingers lift, until STOP.
+    await page.click('[data-mode="hold"]');
+    await pad.click({ position: { x: box.width * 0.2, y: box.height * 0.5 } });
+    await pad.click({ position: { x: box.width * 0.7, y: box.height * 0.2 } });
+    await expect(page.locator('#layers')).toHaveText('CAPAS 2/6');
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await page.click('#stop');
+    await expect(page.locator('#layers')).toHaveText('CAPAS 0/6');
+    await waitQuiet(page);
+
+    // Six at most: a seventh takes the place of the oldest.
+    for (let i = 0; i < 7; i++) {
+      await pad.click({ position: { x: box.width * (0.1 + i * 0.12), y: box.height * 0.5 } });
+    }
+    await expect(page.locator('#layers')).toHaveText('CAPAS 6/6');
+    await expect(pad.locator('b')).toHaveCount(6);
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    // CLEAR: silence now, effect tails included.
+    await page.click('#clear-layers');
+    await expect(page.locator('#layers')).toHaveText('CAPAS 0/6');
+    await waitQuiet(page, 1000);
+    expect(errors).toEqual([]);
+  });
+
+  test('cortar el cable, parar el transporte o quitar el nodo sueltan las capas', async ({ page }) => {
+    test.setTimeout(60_000);
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'drone');
+    await page.click('[data-mode="hold"]');
+    const hold = () =>
+      page.evaluate(() => {
+        window.__mono.live.padDown(1, { x: 0.4, y: 0.5 });
+        window.__mono.live.padUp(1);
+        window.__mono.live.padDown(2, { x: 0.8, y: 0.3 });
+        window.__mono.live.padUp(2);
+      });
+
+    await hold();
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await clickCable(page, 'drone');
+    await expect(page.locator('#layers')).toHaveText('CAPAS 0/6');
+    await waitQuiet(page, 1000); // the cable fades in milliseconds
+    await clickCable(page, 'drone');
+    expect(await peakLevel(page)).toBeLessThan(0.001); // released, not muted
+
+    await hold();
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await page.click('#play'); // stop
+    await expect(page.locator('#layers')).toHaveText('CAPAS 0/6');
+    await waitQuiet(page);
+
+    await hold(); // playable with the transport stopped
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    await page.click('#rm');
+    await waitQuiet(page, 1000);
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('mezcla con LEAD y DRONE', () => {
+  test('los cinco instrumentos juntos, LEAD y seis capas de DRONE, no pasan de 0 dBFS', async ({ page }) => {
+    await page.goto('/');
+    for (const id of ['drum', 'bass', 'synth', 'lead', 'drone']) await addNode(page, id);
+    await page.waitForTimeout(2500); // the sequenced modules join at a bar line
+    await page.evaluate(() => {
+      window.__mono.live.keyDown(1, 7);
+      // Six layers at the top of the pad: brightest, moving most.
+      for (let i = 0; i < 6; i++) window.__mono.live.padDown(10 + i, { x: 0.1 + i * 0.15, y: 0.1 });
+    });
+    const mix = await page.evaluate(
+      () =>
+        new Promise<{ bus: number; out: number; reduction: number }>((resolve) => {
+          let bus = 0;
+          let out = 0;
+          let reduction = 0;
+          const timer = setInterval(() => {
+            const m = window.__mono.mix();
+            bus = Math.max(bus, m.bus);
+            out = Math.max(out, m.out);
+            reduction = Math.min(reduction, m.reduction);
+          }, 15);
+          setTimeout(() => {
+            clearInterval(timer);
+            resolve({ bus, out, reduction });
+          }, 5000);
+        }),
+    );
+    console.log('mezcla con LEAD y DRONE', JSON.stringify(mix));
+    expect(mix.bus).toBeGreaterThan(0.2);
+    expect(mix.out).toBeLessThan(1);
+    expect(mix.reduction).toBeGreaterThan(-6);
   });
 });

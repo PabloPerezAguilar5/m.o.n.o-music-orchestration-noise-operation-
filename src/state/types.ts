@@ -1,6 +1,7 @@
 import type { AudioStatus } from '../core/audio-scene';
 import type { BassMode, BassPattern } from '../core/bass-patterns';
 import type { DrumPattern } from '../core/drum-patterns';
+import type { DroneMode, DronePreset } from '../core/drone';
 import type { Point } from '../core/geometry';
 import type { DistType, NodeId } from '../core/nodes';
 import type { ScaleId } from '../core/scales';
@@ -14,7 +15,7 @@ export interface TransportState {
   readonly step: number;
 }
 
-/** Tonic and scale, shared by BASS and SYNTH. */
+/** Tonic and scale, shared by BASS, SYNTH, LEAD (SCALE LOCK) and DRONE (the pad). */
 export interface KeyState {
   /** 0 = C … 11 = B. */
   readonly root: number;
@@ -60,6 +61,22 @@ export interface SynthState {
   readonly pattern: SynthPattern;
 }
 
+/** LEAD keyboard settings (the notes themselves are played live, see live.ts). */
+export interface LeadState {
+  /** OCT − and +: octaves from the keyboard's home (C4 … C6). */
+  readonly octave: number;
+  /** SCALE LOCK: every key plays the nearest note of the shared key. */
+  readonly scaleLock: boolean;
+}
+
+/** DRONE pad settings (the layers themselves are played live, see live.ts). */
+export interface DroneState {
+  /** Sound of new layers (DRONE, PAD, GLASS, NOISE, ALIEN). */
+  readonly preset: DronePreset;
+  /** TOUCH: a layer sounds while touched. HOLD: it keeps sounding after. */
+  readonly mode: DroneMode;
+}
+
 /** CLICK on the MASTER panel. */
 export interface MetronomeState {
   readonly on: boolean;
@@ -81,10 +98,10 @@ export interface AppState {
   readonly drum: DrumState;
   readonly bass: BassState;
   readonly synth: SynthState;
+  readonly lead: LeadState;
+  readonly drone: DroneState;
   /** Nodes whose cable to MASTER is cut (they stay on the canvas, silent). */
   readonly unplugged: readonly NodeId[];
-  /** DRONE pad position, both axes 0..1. */
-  readonly drone: Point;
   readonly distType: DistType;
   readonly transport: TransportState;
   readonly metronome: MetronomeState;

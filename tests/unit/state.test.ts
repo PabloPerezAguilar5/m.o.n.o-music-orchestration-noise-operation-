@@ -274,9 +274,20 @@ describe('Store', () => {
     expect(store.getState().transport).toMatchObject({ playing: false, step: -1 });
   });
 
-  it('clamps the drone pad and stores the distortion type', () => {
-    store.setDronePosition({ x: 2, y: -1 });
-    expect(store.getState().drone).toEqual({ x: 1, y: 0 });
+  it('stores the DRONE preset and mode, the LEAD octave and SCALE LOCK, and the distortion type', () => {
+    expect(store.getState().drone).toEqual({ preset: 'drone', mode: 'touch' });
+    store.setDronePreset('alien');
+    store.setDroneMode('hold');
+    expect(store.getState().drone).toEqual({ preset: 'alien', mode: 'hold' });
+
+    expect(store.getState().lead).toEqual({ octave: 0, scaleLock: false });
+    for (let i = 0; i < 9; i++) store.nudgeLeadOctave(1);
+    expect(store.getState().lead.octave).toBe(2); // C6 … C8 at most
+    for (let i = 0; i < 9; i++) store.nudgeLeadOctave(-1);
+    expect(store.getState().lead.octave).toBe(-3); // C1 … C3 at least
+    store.toggleScaleLock();
+    expect(store.getState().lead.scaleLock).toBe(true);
+
     store.setDistType('crush');
     expect(store.getState().distType).toBe('crush');
   });

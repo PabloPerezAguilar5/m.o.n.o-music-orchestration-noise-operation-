@@ -7,14 +7,17 @@ import {
 } from '../core/audio-scene';
 import { pickVariant } from '../core/drum-kits';
 import type { DrumPattern } from '../core/drum-patterns';
+import type { LiveEvent } from '../core/live-events';
 import { clickAt } from '../core/metronome';
 import { DRUM_ROWS, type NodeId } from '../core/nodes';
 import { LookaheadScheduler, type ScheduledStep } from '../core/scheduler';
 import { startTicker, type AudioTicker } from './audio-clock';
 import type { AudioBackend, StatusListener, StepEvent, StepListener } from './backend';
 import { bassTrackSpec } from './bass/bass-track';
+import { DroneModule } from './drone/drone-module';
 import { DrumModule, type LoadedKit } from './drum-module';
-import { AudioGraph } from './graph';
+import { AudioGraph, type AudioModule } from './graph';
+import { LeadTrack } from './lead/lead-track';
 import { MasterBus, type MixMeter } from './master';
 import { MetronomeVoice } from './metronome';
 import { MANIFEST_FILE, SampleLibrary } from './sample-library';
@@ -34,6 +37,8 @@ const AUDITION_VELOCITY = 0.9;
 
 const MASTER = 'master';
 const DRUM: NodeId = 'drum';
+const LEAD: NodeId = 'lead';
+const DRONE: NodeId = 'drone';
 
 /** What DRUM is playing now; it catches up with the latest scene as allowed. */
 interface Applied {
@@ -43,7 +48,7 @@ interface Applied {
   pattern: DrumPattern;
 }
 
-/** Where the voice processor (BASS and SYNTH) stands in this context. */
+/** Where the voice processor (BASS, SYNTH and LEAD) stands in this context. */
 type VoiceLoad = 'loading' | 'ready' | 'failed';
 
 interface PendingVisual {
@@ -59,9 +64,11 @@ interface PendingVisual {
  * delivered when that time is heard (output latency included).
  *
  * Applies at once: tempo, levels, DRUM row volume and tone, BASS and SYNTH knobs, keys
- * and presets, hand edits of a pattern. Waits for the next bar while playing: adding or
+ * and presets, hand edits of a pattern, and everything played live (LEAD notes, DRONE
+ * layers, their knobs). Waits for the next bar while playing: adding or
  * removing nodes, cutting or plugging cables, changing kit, a regenerated pattern,
- * tonic and scale.
+ * tonic and scale. LEAD and DRONE are the exception: played by hand, they join, leave
+ * and have their cable cut at once (applyLive).
  */
 export class WebAudioBackend implements AudioBackend {
   private context: AudioContext | null = null;
@@ -74,6 +81,10 @@ export class WebAudioBackend implements AudioBackend {
     new VoiceTrack(bassTrackSpec()),
     new VoiceTrack(synthTrackSpec()),
   ];
+  /** LEAD, live on the shared voice engine. */
+  private readonly lead = new LeadTrack();
+  /** DRONE, live on native Web Audio nodes. */
+  private drone: DroneModule | null = null;
   private voiceLoad: VoiceLoad = 'loading';
   private metronome: MetronomeVoice | null = null;
   /** Kit waiting to be heard (its samples may still be loading). */
@@ -139,7 +150,18 @@ export class WebAudioBackend implements AudioBackend {
     this.scheduler.stop(now);
     this.drum?.cancelAfter(now);
     for (const track of this.tracks) track.flush(now);
+    // Live voices are released too: nothing is left hanging when the transport stops.
+    this.lead.flush(now);
+    this.drone?.stop(now);
     this.metronome?.cancelAfter(now);
+  }
+
+  perform(event: LiveEvent): void {
+    const context = this.context;
+    if (!this.initialized || !context) return;
+    const now = context.currentTime;
+    if (event.node === 'lead') this.lead.play(event, now);
+    else this.drone?.play(event, now);
   }
 
   audition(kit: string): void {
@@ -178,7 +200,10 @@ export class WebAudioBackend implements AudioBackend {
   private async initialize(context: AudioContext): Promise<void> {
     this.master = new MasterBus(context);
     this.master.output.connect(context.destination);
-    this.graph = new AudioGraph(context);
+    const keepAlive = context.createGain();
+    keepAlive.gain.value = 0;
+    keepAlive.connect(context.destination);
+    this.graph = new AudioGraph(context, keepAlive);
     this.graph.add(MASTER, this.master);
     this.metronome = new MetronomeVoice(context, context.destination);
     this.library = new SampleLibrary((data) => context.decodeAudioData(data));
@@ -194,7 +219,7 @@ export class WebAudioBackend implements AudioBackend {
       },
       (error: unknown) => {
         this.voiceLoad = 'failed';
-        console.warn('M.O.N.O.: no se pudo cargar la voz de BASS y SYNTH; quedan en silencio.', error);
+        console.warn('M.O.N.O.: no se pudo cargar la voz de BASS, SYNTH y LEAD; quedan en silencio.', error);
       },
     );
 
@@ -239,9 +264,13 @@ export class WebAudioBackend implements AudioBackend {
     this.master!.setChannelLevel(DRUM, channelGain(scene.master.drumLevel), now);
     this.master!.setChannelLevel('bass', channelGain(scene.master.bassLevel), now);
     this.master!.setChannelLevel('synth', channelGain(scene.master.synthLevel), now);
+    this.master!.setChannelLevel(LEAD, channelGain(scene.master.leadLevel), now);
+    this.master!.setChannelLevel(DRONE, channelGain(scene.master.droneLevel), now);
     this.metronome!.setVolume(scene.metronome.volume, now);
     for (const row of DRUM_ROWS) this.drum?.setRow(row, scene.drum.rows[row], now);
     for (const track of this.tracks) track.update(scene);
+    this.lead.update(scene);
+    this.drone?.setScene(scene, now);
 
     if (!this.applied) {
       this.applied = { kit: null, seed: scene.drum.seed, generation: scene.drum.generation, pattern: scene.drum.pattern };
@@ -250,13 +279,19 @@ export class WebAudioBackend implements AudioBackend {
       this.applied.pattern = scene.drum.pattern;
     }
 
+    this.applyLive(scene, now);
     if (this.structuralChange(scene)) this.queueStructural();
   }
 
   /** Whether a node of the scene should be in the graph (voice instruments need their processor). */
   private wants(scene: AudioScene, id: NodeId): boolean {
     if (!scene.nodes.includes(id)) return false;
-    return id === DRUM || this.voiceLoad === 'ready';
+    return id === DRUM || id === DRONE || this.voiceLoad === 'ready';
+  }
+
+  /** The nodes on the clock, whose structural changes wait for the bar. */
+  private sequencedIds(): NodeId[] {
+    return [DRUM, ...this.tracks.map((track) => track.id)];
   }
 
   private structuralChange(scene: AudioScene): boolean {
@@ -265,7 +300,7 @@ export class WebAudioBackend implements AudioBackend {
     const kit = scene.drum.kit;
     // A new kit counts once it has loaded, or when it still has to be requested.
     const kitChange = kit !== applied.kit && (this.kits.has(kit) || !this.kitRequests.has(kit));
-    const ids = [DRUM, ...this.tracks.map((track) => track.id)];
+    const ids = this.sequencedIds();
     const nodeChange = ids.some((id) => this.wants(scene, id) !== graph.has(id));
     const cableChange = ids.some((id) => graph.has(id) && scene.cables.includes(id) !== graph.isConnected(id, MASTER));
     return (
@@ -335,15 +370,57 @@ export class WebAudioBackend implements AudioBackend {
     }
 
     // Cables: each live connection is made or cut here, with a short fade.
-    for (const id of [DRUM, ...this.tracks.map((track) => track.id)]) {
-      if (!graph.has(id)) continue;
-      const want = scene.cables.includes(id);
-      if (want && !graph.isConnected(id, MASTER)) {
-        graph.connect(id, MASTER, time);
-      } else if (!want && graph.isConnected(id, MASTER)) {
-        graph.disconnect(id, MASTER, time);
-        this.tracks.find((track) => track.id === id)?.flush(time);
-      }
+    for (const id of this.sequencedIds()) this.plug(id, scene, time);
+  }
+
+  /**
+   * LEAD and DRONE join, leave, and have their cable cut or plugged at once, playing or
+   * not: they are played by hand and have no bar to line up with, and waiting for one
+   * would leave the keys and the pad dead for up to a bar.
+   */
+  private applyLive(scene: AudioScene, time: number): void {
+    const context = this.context!;
+    this.place(LEAD, scene, time, () => this.lead.create(context, scene), () => this.lead.drop(time));
+    this.place(
+      DRONE,
+      scene,
+      time,
+      () => (this.drone = new DroneModule(context, scene)),
+      () => {
+        this.drone?.stop(time);
+        this.drone = null;
+      },
+    );
+    this.plug(LEAD, scene, time);
+    this.plug(DRONE, scene, time);
+  }
+
+  /** Makes or cuts a node's cable to MASTER as the scene wants. A cut releases what was sounding. */
+  private plug(id: NodeId, scene: AudioScene, time: number): void {
+    const graph = this.graph!;
+    if (!graph.has(id)) return;
+    const want = scene.cables.includes(id);
+    if (want && !graph.isConnected(id, MASTER)) {
+      graph.connect(id, MASTER, time);
+    } else if (!want && graph.isConnected(id, MASTER)) {
+      graph.disconnect(id, MASTER, time);
+      // Nothing waits behind a cut cable to sound when it is plugged back.
+      this.tracks.find((track) => track.id === id)?.flush(time);
+      // LEAD and DRONE, unheard now, go silent at once: nothing is left to come back.
+      if (id === LEAD) this.lead.flush(time, true);
+      if (id === DRONE) this.drone?.clear(time);
+    }
+  }
+
+  /** Adds a node's module to the graph or takes it out, as the scene wants. */
+  private place(id: NodeId, scene: AudioScene, time: number, create: () => AudioModule, drop: () => void): void {
+    const graph = this.graph!;
+    const want = this.wants(scene, id);
+    if (want && !graph.has(id)) {
+      graph.add(id, create());
+    } else if (!want && graph.has(id)) {
+      drop();
+      graph.remove(id, time);
     }
   }
 

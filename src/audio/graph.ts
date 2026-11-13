@@ -35,11 +35,22 @@ export class AudioGraph {
   private readonly modules = new Map<string, AudioModule>();
   private readonly cables = new Map<string, Cable>();
 
-  constructor(private readonly context: BaseAudioContext) {}
+  /**
+   * `keepAlive`: a silent path (zero gain) to the speakers that every module's output
+   * also feeds. Browsers stop processing nodes that do not reach the output, so without it
+   * a module whose cable is cut would freeze mid-release (and its effect tails with it)
+   * and play the rest when plugged back. With it, a cut instrument keeps running unheard
+   * and its tails die out as they would.
+   */
+  constructor(
+    private readonly context: BaseAudioContext,
+    private readonly keepAlive?: AudioNode,
+  ) {}
 
   add(id: string, module: AudioModule): void {
     if (this.modules.has(id)) throw new Error(`module ${id} already in the graph`);
     this.modules.set(id, module);
+    if (this.keepAlive) module.output.connect(this.keepAlive);
   }
 
   has(id: string): boolean {

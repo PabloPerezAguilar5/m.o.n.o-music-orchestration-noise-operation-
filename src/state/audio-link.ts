@@ -2,13 +2,15 @@ import type { AudioBackend, StepEvent } from '../audio/backend';
 import { pulsesAt } from '../core/activity';
 import type { NodeId } from '../core/nodes';
 import type { Cues } from './cues';
+import type { Live } from './live';
 import { sceneFromState } from './scene';
 import type { Store } from './store';
 
 /**
  * Keeps an audio backend in step with the store, both ways: every state change goes
  * out as a scene and starts or stops the transport; steps and status come back in.
- * One-shot cues (a kit's sample hit) are passed straight through.
+ * One-shot cues (a kit's sample hit) and live events (LEAD notes, DRONE layers) are
+ * passed straight through.
  * Returns a function that undoes the link.
  */
 export function linkAudio(
@@ -16,6 +18,7 @@ export function linkAudio(
   backend: AudioBackend,
   pulse: (id: NodeId, ms: number) => void,
   cues?: Cues,
+  live?: Live,
 ): () => void {
   const onStep = (event: StepEvent): void => {
     store.setStep(event.step);
@@ -36,6 +39,9 @@ export function linkAudio(
       state.bass,
       state.params.synth,
       state.synth,
+      state.params.lead,
+      state.params.drone,
+      state.drone.preset,
       state.key,
       state.unplugged,
       state.transport.bpm,
@@ -57,8 +63,10 @@ export function linkAudio(
   const unsubscribeCues = cues?.listen((cue) => {
     if (cue.type === 'audition') backend.audition(cue.kit);
   });
+  const unsubscribeLive = live?.listen((event) => backend.perform(event));
   sync();
   return () => {
+    unsubscribeLive?.();
     unsubscribeCues?.();
     unsubscribeStore();
     unsubscribeStatus();

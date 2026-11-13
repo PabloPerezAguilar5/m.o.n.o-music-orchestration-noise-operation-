@@ -107,8 +107,11 @@ describe('activity', () => {
     expect(ids(1)).toEqual([]);
   });
 
-  it('lights master, distortion and drone on each beat and lfo every other step', () => {
-    expect(ids(4)).toEqual(expect.arrayContaining(['master', 'dist', 'drone', 'lfo']));
+  it('lights master and distortion on each beat and lfo every other step', () => {
+    expect(ids(4)).toEqual(expect.arrayContaining(['master', 'dist', 'lfo']));
+    // LEAD and DRONE are live: they light up while they sound, never on the clock.
+    expect(ids(4)).not.toContain('drone');
+    expect(ids(4)).not.toContain('lead');
     expect(ids(2)).toContain('lfo');
     expect(ids(2)).not.toContain('master');
     expect(ids(5)).not.toContain('lfo');

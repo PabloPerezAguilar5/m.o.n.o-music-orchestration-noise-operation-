@@ -32,6 +32,12 @@ export interface EngineParams {
   readonly transpose: number;
   /** Output trim 0..1 (a preset's loudness), smoothed. */
   readonly level: number;
+  /**
+   * Portamento time constant, seconds (LEAD's GLIDE). 0 = the design's slide time, and
+   * only legato notes glide (BASS slides). Above 0, every note of a mono engine glides
+   * from the one before, retriggered or not.
+   */
+  readonly glide: number;
 }
 
 export interface VoiceDsp {
@@ -41,8 +47,11 @@ export interface VoiceDsp {
   noteOn(id: number, midi: number, accent: boolean, legato: boolean): void;
   /** Releases note `id`; ids that are not sounding are ignored. */
   noteOff(id: number): void;
-  /** Releases everything (stop, cable cut). */
-  allOff(): void;
+  /**
+   * Releases everything: with the release time (transport stopped), or `hard`, in a few
+   * milliseconds whatever the release (the instrument can no longer be heard: cable cut).
+   */
+  allOff(hard?: boolean): void;
   /** Writes samples [start, end) of `out`. */
   render(out: Float32Array, start: number, end: number): void;
 }
@@ -57,6 +66,8 @@ export interface OutputDesign {
 
 /** Parameter smoothing time constant, seconds. */
 const SMOOTHING = 0.012;
+/** A hard release (allOff hard), seconds: fast, yet a fade, not a click. */
+const CUT_RELEASE = 0.003;
 /** Accent level easing, seconds. */
 const LEVEL_EASING = 0.002;
 /** Limiter threshold and release. */
@@ -80,6 +91,7 @@ export const DEFAULT_ENGINE_PARAMS: EngineParams = {
   release: 0.008,
   transpose: 0,
   level: 1,
+  glide: 0,
 };
 
 export class VoiceEngine implements VoiceDsp {
@@ -117,7 +129,7 @@ export class VoiceEngine implements VoiceDsp {
   noteOn(id: number, midi: number, accent: boolean, legato: boolean): void {
     const pitch = midi + this.target.transpose;
     if (this.voices.length === 1) {
-      this.voices[0]!.start(id, pitch, accent, legato);
+      this.voices[0]!.start(id, pitch, accent, legato, this.target.glide > 0);
       this.voices[0]!.startedAt = this.clock;
       return;
     }
@@ -133,8 +145,8 @@ export class VoiceEngine implements VoiceDsp {
     for (const voice of this.voices) if (voice.id === id && voice.held) voice.release();
   }
 
-  allOff(): void {
-    for (const voice of this.voices) voice.release();
+  allOff(hard = false): void {
+    for (const voice of this.voices) voice.release(hard);
   }
 
   /** Voices with their gate open or still releasing. */
@@ -159,7 +171,7 @@ export class VoiceEngine implements VoiceDsp {
     const c = this.controls;
     const timing: VoiceTiming = {
       rate,
-      slide: this.slide,
+      slide: p.glide > 0 ? coefficient(p.glide, rate) : this.slide,
       attackStep: 1 / Math.max(1, p.attack * rate),
       decay: coefficient(p.decay, rate),
       sustain: clamp01(p.sustain),
@@ -167,6 +179,7 @@ export class VoiceEngine implements VoiceDsp {
       filterDecay: decayFactor(p.filterDecay, rate),
       accentDecay: this.accentDecay,
       level: coefficient(LEVEL_EASING, rate),
+      cut: coefficient(CUT_RELEASE, rate),
     };
     const limiterRelease = coefficient(LIMITER_RELEASE, rate);
 

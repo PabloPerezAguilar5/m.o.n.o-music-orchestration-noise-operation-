@@ -12,7 +12,7 @@ import processorUrl from './voice-processor.ts?worker&url';
 const loads = new WeakMap<BaseAudioContext, Promise<void>>();
 
 /**
- * Loads the voice processor into a context, once (BASS and SYNTH share it). Rejects
+ * Loads the voice processor into a context, once (BASS, SYNTH and LEAD share it). Rejects
  * where AudioWorklet is missing (e.g. a page not served from https or localhost).
  */
 export function loadVoiceProcessor(context: BaseAudioContext): Promise<void> {
@@ -57,9 +57,12 @@ export class VoiceModule implements AudioModule {
     if (events.length > 0) this.post({ type: 'events', events });
   }
 
-  /** Cancels what was scheduled from `time` on and releases every note then (stop, cable cut). */
-  flush(time: number): void {
-    this.post({ type: 'flush', time });
+  /**
+   * Cancels what was scheduled from `time` on and releases every note then (stop, cable
+   * cut); `hard` fades them in milliseconds instead of their release.
+   */
+  flush(time: number, hard = false): void {
+    this.post({ type: 'flush', time, hard });
   }
 
   dispose(): void {

@@ -1,4 +1,5 @@
 import type { AudioScene, AudioStatus } from '../core/audio-scene';
+import type { LiveEvent } from '../core/live-events';
 import type { NodeId } from '../core/nodes';
 
 /** A step reaching the listener at the moment it is heard. */
@@ -27,6 +28,11 @@ export interface AudioBackend {
   stop(): void;
   /** New desired state. Structural changes wait for the next bar while playing. */
   update(scene: AudioScene): void;
+  /**
+   * Plays a live event (a LEAD note, a DRONE layer) right away, playing or not. Nothing
+   * is scheduled on the clock: the instrument is being played by hand.
+   */
+  perform(event: LiveEvent): void;
   /** Plays one kick of a kit right away, to hear it (playing or not). Loads the kit if needed. */
   audition(kit: string): void;
   /** Status changes (audio running, kits available, failed files). Returns an unsubscribe function. */

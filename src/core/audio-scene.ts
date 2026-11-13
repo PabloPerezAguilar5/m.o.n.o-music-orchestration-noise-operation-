@@ -1,4 +1,6 @@
 import type { BassMode, BassPattern } from './bass-patterns';
+import type { DronePreset } from './drone';
+import type { DroneKnobs } from './drone-sound';
 import type { ScaleId } from './scales';
 import type { SynthPattern } from './synth-patterns';
 import type { SynthPreset } from './synth-voices';
@@ -62,6 +64,21 @@ export interface SynthScene {
   readonly detune: number;
 }
 
+/** LEAD knobs, 0..1. The notes come live (LiveEvent), not from the scene. */
+export interface LeadScene {
+  readonly wave: number;
+  readonly cutoff: number;
+  readonly resonance: number;
+  readonly attack: number;
+  readonly release: number;
+  readonly glide: number;
+}
+
+/** DRONE: knobs, the preset new layers take and the key the pad is tuned to. */
+export interface DroneScene extends DroneKnobs {
+  readonly preset: DronePreset;
+}
+
 export interface AudioScene {
   readonly bpm: number;
   /** Nodes on the canvas. */
@@ -74,10 +91,14 @@ export interface AudioScene {
     readonly drumLevel: number;
     readonly bassLevel: number;
     readonly synthLevel: number;
+    readonly leadLevel: number;
+    readonly droneLevel: number;
   };
   readonly drum: DrumScene;
   readonly bass: BassScene;
   readonly synth: SynthScene;
+  readonly lead: LeadScene;
+  readonly drone: DroneScene;
   readonly metronome: MetronomeScene;
 }
 

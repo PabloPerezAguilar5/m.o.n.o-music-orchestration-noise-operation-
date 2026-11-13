@@ -1,5 +1,5 @@
 /**
- * AudioWorklet processor of the synth voices (BASS and SYNTH). Runs on the audio thread.
+ * AudioWorklet processor of the synth voices (BASS, SYNTH and LEAD). Runs on the audio thread.
  *
  * The main thread schedules note events ahead of time (the lookahead clock shared with
  * DRUM); this processor applies each one at its exact sample. The sound comes from a
@@ -20,7 +20,7 @@ declare class AudioWorkletProcessor {
 }
 
 /** A scheduled event, or a release of every note (flush). */
-type Queued = VoiceEvent | { readonly type: 'panic'; readonly time: number };
+type Queued = VoiceEvent | { readonly type: 'panic'; readonly time: number; readonly hard: boolean };
 
 class VoiceProcessor extends AudioWorkletProcessor {
   private readonly dsp: VoiceDsp;
@@ -44,7 +44,7 @@ class VoiceProcessor extends AudioWorkletProcessor {
         break;
       case 'flush':
         this.queue = this.queue.filter((event) => event.time < message.time);
-        this.queue.push({ type: 'panic', time: message.time });
+        this.queue.push({ type: 'panic', time: message.time, hard: message.hard ?? false });
         break;
     }
     this.queue.sort((a, b) => a.time - b.time);
@@ -53,7 +53,7 @@ class VoiceProcessor extends AudioWorkletProcessor {
   private apply(event: Queued): void {
     if (event.type === 'on') this.dsp.noteOn(event.id, event.midi, event.accent, event.legato);
     else if (event.type === 'off') this.dsp.noteOff(event.id);
-    else this.dsp.allOff();
+    else this.dsp.allOff(event.hard);
   }
 
   process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {

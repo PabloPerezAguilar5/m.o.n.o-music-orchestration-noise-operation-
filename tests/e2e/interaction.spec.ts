@@ -163,10 +163,10 @@ test.describe('panel', () => {
       synth: { knobs: 6, zone: 'mono-step-grid' },
       drum: { knobs: 8, zone: 'mono-step-grid' }, // TONO and VOL per row
       bass: { knobs: 4, zone: 'mono-step-grid' },
-      drone: { knobs: 4, zone: 'mono-xy-pad' },
+      drone: { knobs: 5, zone: 'mono-xy-pad' }, // FILTRO ATAQUE RELEASE DESAF. VOL
       dist: { knobs: 3, zone: 'mono-type-switch' },
       lfo: { knobs: 3, zone: 'mono-wave' },
-      lead: { knobs: 6, zone: 'mono-keys' },
+      lead: { knobs: 6, zone: 'mono-keys' }, // ONDA CUTOFF RESO ATAQUE RELEASE GLIDE
     } as const;
     await expect(page.locator('mono-tempo')).toBeVisible();
     for (const id of INSTRUMENTS) {
@@ -372,21 +372,40 @@ test.describe('panel', () => {
     await expect(page.locator('.st.ph')).toHaveCount(0);
   });
 
-  test('el pad de DRONE sigue al dedo', async ({ page }) => {
+  test('el pad de DRONE sigue al dedo: una capa mientras se toca (TOUCH), y sigue al soltar en HOLD', async ({
+    page,
+  }) => {
     await addNode(page, 'drone');
     const pad = page.locator('.xy');
     const box = await pad.boundingBox();
     if (!box) throw new Error('pad is not visible');
-    await pad.click({ position: { x: box.width * 0.25, y: box.height * 0.75 } });
-
-    const dot = await pad.locator('b').evaluate((el: HTMLElement) => ({
-      left: parseFloat(el.style.left),
-      top: parseFloat(el.style.top),
-    }));
-    // The click lands on a whole pixel, so allow one pixel of rounding on a small pad.
+    const dot = () =>
+      pad.locator('b').evaluate((el: HTMLElement) => ({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) }));
+    // The pointer lands on a whole pixel, so allow one pixel of rounding on a small pad.
     const tolerance = 100 / Math.min(box.width, box.height) + 0.5;
-    expect(Math.abs(dot.left - 25)).toBeLessThan(tolerance);
-    expect(Math.abs(dot.top - 75)).toBeLessThan(tolerance);
+
+    await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.75);
+    await page.mouse.down();
+    await expect(pad.locator('b')).toHaveCount(1);
+    let at = await dot();
+    expect(Math.abs(at.left - 25)).toBeLessThan(tolerance);
+    expect(Math.abs(at.top - 75)).toBeLessThan(tolerance);
+    // Dragging moves the layer.
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5, { steps: 4 });
+    at = await dot();
+    expect(Math.abs(at.left - 60)).toBeLessThan(tolerance);
+    await page.mouse.up();
+    await expect(pad.locator('b')).toHaveCount(0); // TOUCH: it ends on release
+
+    await page.click('[data-mode="hold"]');
+    await pad.click({ position: { x: box.width * 0.2, y: box.height * 0.5 } });
+    await pad.click({ position: { x: box.width * 0.8, y: box.height * 0.5 } });
+    await expect(pad.locator('b')).toHaveCount(2);
+    await expect(pad.locator('b.held')).toHaveCount(2);
+    await expect(page.locator('#layers')).toHaveText('CAPAS 2/6');
+    // Back to TOUCH: the held layers end.
+    await page.click('[data-mode="touch"]');
+    await expect(pad.locator('b')).toHaveCount(0);
   });
 
   test('el tipo de DISTORSION cambia y se conserva', async ({ page }) => {
@@ -402,10 +421,11 @@ test.describe('panel', () => {
     await expect(key('hard')).toHaveClass(/\ba\b/);
   });
 
-  test('el teclado de LEAD empieza en C con las negras en su lugar', async ({ page }) => {
+  test('el teclado de LEAD tiene dos octavas desde C, con las negras en su lugar', async ({ page }) => {
     await addNode(page, 'lead');
     const white = page.locator('mono-keys .wk');
-    await expect(white).toHaveText(['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C', 'D', 'E']);
+    await expect(white).toHaveText(['C4', 'D', 'E', 'F', 'G', 'A', 'B', 'C5', 'D', 'E', 'F', 'G', 'A', 'B', 'C6']);
+    await expect(page.locator('mono-keys .bk')).toHaveCount(10);
 
     // Each black key must straddle the boundary between the two white keys it belongs to.
     const between = await page.locator('mono-keys').evaluate((keys) => {
@@ -421,25 +441,52 @@ test.describe('panel', () => {
         whites.forEach((w, i) => {
           if (w.rect.left <= centre) left = i;
         });
-        return `${key.dataset.note} ${whites[left]!.label}-${whites[left + 1]?.label ?? '?'}`;
+        const name = (label: string | undefined) => label?.replace(/\d/g, '') ?? '?';
+        return `${key.dataset.note} ${name(whites[left]!.label)}-${name(whites[left + 1]?.label)}`;
       });
     });
-    expect(between).toEqual(['C# C-D', 'D# D-E', 'F# F-G', 'G# G-A', 'A# A-B', 'C# C-D', 'D# D-E']);
+    const octave = ['C# C-D', 'D# D-E', 'F# F-G', 'G# G-A', 'A# A-B'];
+    expect(between).toEqual([...octave, ...octave]);
+
+    // OCT − and + move the keyboard, within C1 … C8.
+    await page.click('#oct-up');
+    await expect(white.first()).toHaveText('C5');
+    await expect(page.locator('#lcd')).toHaveText('LEAD · C5-C7');
+    for (let i = 0; i < 4; i++) await page.click('#oct-up', { force: true });
+    await expect(page.locator('#oct-up')).toBeDisabled();
+    await expect(white.first()).toHaveText('C6');
+    // SCALE LOCK dims the keys outside the scale and shows the key on the display.
+    await page.click('#lock');
+    await expect(page.locator('#lock')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#lcd')).toHaveText('LEAD · C6-C8 · C PENTA MENOR');
+    // C, F and G of each octave and the top C are in C penta minor; the other eight white keys are not.
+    await expect(page.locator('mono-keys .wk.out')).toHaveCount(8);
   });
 
-  test('las teclas de LEAD se encienden al tocarlas y prenden el nodo', async ({ page }) => {
+  test('las teclas de LEAD se encienden mientras se tocan y el nodo mientras suena', async ({ page }) => {
     await addNode(page, 'lead');
     await page.click('#play'); // stop, so only the key press can light the node
     await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
 
-    const pressed = await page.locator('mono-keys').evaluate(async (keys) => {
-      const key = keys.shadowRoot!.querySelector('.wk')!;
-      key.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-      await (keys as HTMLElement & { updateComplete: Promise<boolean> }).updateComplete;
-      return key.classList.contains('p');
-    });
-    expect(pressed).toBe(true);
+    const key = page.locator('mono-keys .wk').nth(2);
+    const box = (await key.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 8);
+    await page.mouse.down();
+    await expect(key).toHaveClass(/\bp\b/);
     await expect(page.locator('#nd-lead')).toHaveClass(/\bon\b/);
+    // Held: still lit well after a tap would have faded.
+    await page.waitForTimeout(600);
+    await expect(key).toHaveClass(/\bp\b/);
+    await expect(page.locator('#nd-lead')).toHaveClass(/\bon\b/);
+
+    // Sliding to the next key moves the light with the finger.
+    const next = page.locator('mono-keys .wk').nth(3);
+    const nextBox = (await next.boundingBox())!;
+    await page.mouse.move(nextBox.x + nextBox.width / 2, nextBox.y + nextBox.height - 8, { steps: 3 });
+    await expect(next).toHaveClass(/\bp\b/);
+    await expect(key).not.toHaveClass(/\bp\b/);
+
+    await page.mouse.up();
     await expect(page.locator('.wk.p')).toHaveCount(0);
     await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
   });

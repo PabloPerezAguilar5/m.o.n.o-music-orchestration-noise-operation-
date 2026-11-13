@@ -58,6 +58,8 @@ export interface VoiceTiming {
   readonly accentDecay: number;
   /** Accent level easing, one-pole. */
   readonly level: number;
+  /** Hard release (cable cut), one-pole. */
+  readonly cut: number;
 }
 
 type AmpStage = 'attack' | 'decay' | 'release';
@@ -78,8 +80,12 @@ export class Voice {
   private pitch = Math.log2(110);
   private pitchTarget = Math.log2(110);
   private gliding = false;
+  /** Whether the voice has played a note yet (portamento needs a note to glide from). */
+  private played = false;
 
   private gate = false;
+  /** Fading out fast (a hard release), until the next note. */
+  private hard = false;
   private stage: AmpStage = 'release';
   private amp = 0;
   private level: number;
@@ -115,17 +121,20 @@ export class Voice {
   /**
    * Starts a note. With `legato` and the gate open, the pitch glides and the
    * envelopes keep going (slide); otherwise the envelopes restart from where they are,
-   * so a retrigger never clicks.
+   * so a retrigger never clicks. With `portamento` a retriggered note also glides,
+   * from the last note played.
    */
-  start(id: number, midi: number, accent: boolean, legato: boolean): void {
+  start(id: number, midi: number, accent: boolean, legato: boolean, portamento = false): void {
     this.id = id;
     this.pitchTarget = Math.log2(440) + (midi - 69) / 12;
     if (legato && this.gate) {
       this.gliding = true;
       return;
     }
-    this.gliding = false;
-    this.pitch = this.pitchTarget;
+    this.hard = false;
+    this.gliding = portamento && this.played;
+    if (!this.gliding) this.pitch = this.pitchTarget;
+    this.played = true;
     this.gate = true;
     this.stage = 'attack';
     this.accented = accent;
@@ -134,9 +143,11 @@ export class Voice {
     this.accentEnv = accent ? 1 : 0;
   }
 
-  release(): void {
+  /** Closes the gate: the amplifier fades with the release time, or within milliseconds if `hard`. */
+  release(hard = false): void {
     this.gate = false;
     this.stage = 'release';
+    if (hard) this.hard = true;
   }
 
   /** One sample. `twice` is twice the sample rate (the ladder runs oversampled). */
@@ -169,7 +180,7 @@ export class Voice {
     } else if (this.stage === 'decay') {
       this.amp += (t.sustain - this.amp) * t.decay;
     } else {
-      this.amp -= this.amp * t.release;
+      this.amp -= this.amp * (this.hard ? t.cut : t.release);
     }
     this.level += (this.levelTarget - this.level) * t.level;
 

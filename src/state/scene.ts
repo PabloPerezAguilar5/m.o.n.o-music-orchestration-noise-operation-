@@ -1,5 +1,5 @@
 import type { AudioScene } from '../core/audio-scene';
-import { DRUM_ROWS, drumToneParam, drumVolumeParam, type DrumRow } from '../core/nodes';
+import { DRUM_ROWS, drumToneParam, drumVolumeParam, MACRO_PARAM, type DrumRow } from '../core/nodes';
 import type { AppState } from './types';
 
 /** What should sound for a given app state. */
@@ -14,6 +14,8 @@ export function sceneFromState(state: AppState): AudioScene {
   ) as Record<DrumRow, { volume: number; tone: number }>;
   const bassKnobs = state.params.bass;
   const synthKnobs = state.params.synth;
+  const leadKnobs = state.params.lead;
+  const droneKnobs = state.params.drone;
   const { bass, synth, key } = state;
   return {
     bpm: state.transport.bpm,
@@ -24,6 +26,8 @@ export function sceneFromState(state: AppState): AudioScene {
       drumLevel: master.drumLevel ?? 0,
       bassLevel: master.bassLevel ?? 0,
       synthLevel: master.synthLevel ?? 0,
+      leadLevel: master.leadLevel ?? 0,
+      droneLevel: master.droneLevel ?? 0,
     },
     bass: {
       generation: bass.generation,
@@ -51,6 +55,25 @@ export function sceneFromState(state: AppState): AudioScene {
       attack: synthKnobs.attack ?? 0,
       release: synthKnobs.release ?? 0,
       detune: synthKnobs.detune ?? 0,
+    },
+    lead: {
+      wave: leadKnobs.wave ?? 0,
+      cutoff: leadKnobs.cutoff ?? 0,
+      resonance: leadKnobs.resonance ?? 0,
+      attack: leadKnobs.attack ?? 0,
+      release: leadKnobs.release ?? 0,
+      glide: leadKnobs.glide ?? 0,
+    },
+    drone: {
+      preset: state.drone.preset,
+      root: key.root,
+      scale: key.scale,
+      filter: droneKnobs.filter ?? 0,
+      attack: droneKnobs.attack ?? 0,
+      release: droneKnobs.release ?? 0,
+      detune: droneKnobs.detune ?? 0,
+      volume: droneKnobs.volume ?? 0,
+      chaos: droneKnobs[MACRO_PARAM] ?? 0,
     },
     drum: {
       kit: state.drum.kit,

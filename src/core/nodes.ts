@@ -53,7 +53,7 @@ const DRUM_SECTIONS: readonly ParamSection[] = DRUM_ROWS.map((row) => ({
 
 export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
   master: {
-    params: ['synthLevel', 'drumLevel', 'bassLevel', 'droneLevel', 'space', 'volume'],
+    params: ['synthLevel', 'drumLevel', 'bassLevel', 'droneLevel', 'leadLevel', 'space', 'volume'],
     zone: 'tempo',
     rows: [],
   },
@@ -75,11 +75,11 @@ export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
     // Five scale degrees (highest on top), then slide and accent: see bass-patterns.ts.
     rows: ['degree4', 'degree3', 'degree2', 'degree1', 'degree0', 'slide', 'accent'],
   },
-  drone: { params: ['tone', 'detune', 'filter', 'volume'], zone: 'xy', rows: [] },
+  drone: { params: ['filter', 'attack', 'release', 'detune', 'volume'], zone: 'xy', rows: [] },
   dist: { params: ['drive', 'tone', 'mix'], zone: 'type', rows: [] },
   lfo: { params: ['shape', 'rate', 'depth'], zone: 'wave', rows: [] },
   lead: {
-    params: ['wave', 'cutoff', 'resonance', 'attack', 'release', 'detune'],
+    params: ['wave', 'cutoff', 'resonance', 'attack', 'release', 'glide'],
     zone: 'keys',
     rows: [],
   },

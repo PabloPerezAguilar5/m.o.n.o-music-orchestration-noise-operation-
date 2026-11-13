@@ -5,7 +5,7 @@ import type { EngineParams } from './engine';
 export const VOICE_PROCESSOR = 'mono-voice';
 
 /** Instruments built on the shared voice engine. */
-export type VoiceInstrument = 'bass' | 'synth';
+export type VoiceInstrument = 'bass' | 'synth' | 'lead';
 
 /** Passed when the AudioWorkletNode is created: which engine to run. */
 export interface VoiceProcessorOptions {
@@ -16,5 +16,8 @@ export interface VoiceProcessorOptions {
 export type VoiceMessage =
   | { readonly type: 'params'; readonly params: EngineParams }
   | { readonly type: 'events'; readonly events: readonly VoiceEvent[] }
-  /** Drops every event from `time` on and releases all notes at `time`. */
-  | { readonly type: 'flush'; readonly time: number };
+  /**
+   * Drops every event from `time` on and releases all notes at `time`; `hard` within
+   * milliseconds, whatever the release.
+   */
+  | { readonly type: 'flush'; readonly time: number; readonly hard?: boolean };

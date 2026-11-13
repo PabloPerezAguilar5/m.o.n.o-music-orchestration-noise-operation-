@@ -60,5 +60,6 @@ export function synthParamsFromScene(scene: SynthScene): EngineParams {
     release: Math.min(6, RELEASE_MIN * 2 ** (clamp01(scene.release) * RELEASE_OCTAVES) * preset.releaseScale),
     transpose: preset.transpose,
     level: preset.level,
+    glide: 0,
   };
 }

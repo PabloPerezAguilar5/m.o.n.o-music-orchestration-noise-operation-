@@ -1,6 +1,7 @@
 import { INITIAL_AUDIO_STATUS, type AudioScene, type AudioStatus } from '../core/audio-scene';
 import { BassSequencer } from '../core/bass-patterns';
 import { clickAt, type Click } from '../core/metronome';
+import type { LiveEvent } from '../core/live-events';
 import type { NodeId } from '../core/nodes';
 import { bassMidi, synthMidi } from '../core/scales';
 import { LookaheadScheduler } from '../core/scheduler';
@@ -22,6 +23,8 @@ export class SilentBackend implements AudioBackend {
   /** Voice events, as the real backend would send them to the worklets. */
   readonly bassEvents: VoiceEvent[] = [];
   readonly synthEvents: VoiceEvent[] = [];
+  /** Live events (LEAD notes, DRONE layers), in the order they were played. */
+  readonly live: LiveEvent[] = [];
   private readonly bassSequencer = new BassSequencer();
   private readonly synthSequencer = new SynthSequencer();
   unlocks = 0;
@@ -53,6 +56,10 @@ export class SilentBackend implements AudioBackend {
   update(scene: AudioScene): void {
     this.scenes.push(scene);
     this.scheduler.setBpm(scene.bpm);
+  }
+
+  perform(event: LiveEvent): void {
+    this.live.push(event);
   }
 
   audition(kit: string): void {

@@ -9,7 +9,24 @@ import {
   type BassMode,
   type BassPattern,
 } from '../../core/bass-patterns';
+import {
+  DRONE_MAX_LAYERS,
+  DRONE_MODES,
+  DRONE_PRESETS,
+  droneNoteName,
+  type DroneMode,
+  type DronePreset,
+} from '../../core/drone';
 import { kitLabel } from '../../core/drum-kits';
+import {
+  inScale,
+  LEAD_BASE_MIDI,
+  LEAD_KEY_COUNT,
+  LEAD_OCTAVE_MAX,
+  LEAD_OCTAVE_MIN,
+  leadOctaveName,
+  leadRangeName,
+} from '../../core/lead';
 import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
 import { clickAt } from '../../core/metronome';
 import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } from '../../core/nodes';
@@ -26,10 +43,12 @@ import {
   type SynthPattern,
 } from '../../core/synth-patterns';
 import { SYNTH_PRESETS, type SynthPreset } from '../../core/synth-voices';
-import { cues, pulse, store } from '../../state';
+import { cues, live, pulse, store } from '../../state';
 import {
   BASS_MODE_LABELS,
   bassRowLabels,
+  DRONE_MODE_LABELS,
+  DRONE_PRESET_LABELS,
   KIT_ORDER,
   KNOB_LABELS,
   NODE_CODES,
@@ -46,6 +65,7 @@ import { Selector } from '../store-controller';
 import { hardwareKey, reset } from '../styles/shared';
 import { NODE_COLORS } from '../theme';
 import './mono-keys';
+import type { KeyDownEvent, KeyUpEvent } from './mono-keys';
 import './mono-knob';
 import type { KnobInputEvent } from './mono-knob';
 import './mono-step-grid';
@@ -56,10 +76,10 @@ import './mono-type-switch';
 import type { TypeChangeEvent } from './mono-type-switch';
 import './mono-wave';
 import './mono-xy-pad';
-import type { XyInputEvent } from './mono-xy-pad';
+import type { PadDot, PadDownEvent, PadUpEvent } from './mono-xy-pad';
 
 /** How long the node lights up after each kind of gesture. */
-const PULSE_MS = { knob: 200, step: 200, type: 300, key: 450, pad: 250 } as const;
+const PULSE_MS = { knob: 200, step: 200, type: 300 } as const;
 
 /**
  * Hardware panel of the selected node: neon frame in the node's colour, a
@@ -259,6 +279,26 @@ export class MonoPanel extends LitElement {
       .modes {
         gap: clamp(4px, 0.8vw, 8px);
       }
+      /* Five keys in rows of three (DRONE: SONIDO). */
+      .trio {
+        display: grid;
+        grid-template-columns: repeat(3, auto);
+        grid-auto-rows: minmax(22px, 1fr);
+        align-items: stretch;
+        gap: 4px;
+        height: calc(var(--ks) + 14px);
+        box-sizing: content-box;
+      }
+      .trio .pk {
+        height: auto;
+        min-width: 0;
+        padding: 4px 6px 0;
+        font-size: 8px;
+      }
+      .trio .pk.led::before {
+        top: 3px;
+        height: 2px;
+      }
       /* Four keys in two rows of two, at every width (SYNTH: SONIDO, MODO). */
       .quad {
         display: grid;
@@ -378,7 +418,10 @@ export class MonoPanel extends LitElement {
   private readonly synth = new Selector(this, store, (s) => s.synth);
   /** On/off view of the SYNTH pattern, recomputed only when the pattern changes. */
   private synthGrid: { pattern: SynthPattern; grid: Pattern; dimmed: Pattern } | null = null;
+  private readonly lead = new Selector(this, store, (s) => s.lead);
   private readonly drone = new Selector(this, store, (s) => s.drone);
+  /** What is being played by hand: LEAD keys down, DRONE layers. */
+  private readonly live = new Selector(this, live, (s) => s);
   private readonly distType = new Selector(this, store, (s) => s.distType);
   private readonly bpm = new Selector(this, store, (s) => s.transport.bpm);
   private readonly step = new Selector(this, store, (s) => s.transport.step);
@@ -433,6 +476,8 @@ export class MonoPanel extends LitElement {
           ${id === 'drum' ? [this.patternKeys(), this.kitKeys()] : nothing}
           ${id === 'bass' ? this.bassKeys() : nothing}
           ${id === 'synth' ? this.synthKeys() : nothing}
+          ${id === 'lead' ? this.leadKeys() : nothing}
+          ${id === 'drone' ? this.droneKeys() : nothing}
           ${id === 'master' ? this.metronomeKeys() : nothing}
           <section>
             <h6>${TEXT.macroSection}</h6>
@@ -460,6 +505,14 @@ export class MonoPanel extends LitElement {
     if (id === 'bass') return `${name} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
     if (id === 'synth') {
       return `${name} · ${SYNTH_PRESET_LABELS[this.synth.value.preset]} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
+    }
+    if (id === 'drone') {
+      return `${name} · ${DRONE_PRESET_LABELS[this.drone.value.preset]} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
+    }
+    if (id === 'lead') {
+      const { octave, scaleLock } = this.lead.value;
+      const range = leadRangeName(octave);
+      return scaleLock ? `${name} · ${range} · ${ROOTS[root]} ${SCALE_LABELS[scale]}` : `${name} · ${range}`;
     }
     if (id !== 'drum') return `${name} · ${NODE_CODES[id]}`;
 
@@ -634,7 +687,7 @@ export class MonoPanel extends LitElement {
     ];
   }
 
-  /** ESCALA: tonic and scale, shared by BASS and SYNTH. */
+  /** ESCALA: tonic and scale, shared by BASS, SYNTH, LEAD and DRONE. */
   private keySection(): TemplateResult {
     const { root, scale } = this.key.value;
     return html`<section data-section="key">
@@ -654,11 +707,81 @@ export class MonoPanel extends LitElement {
     </section>`;
   }
 
+  /**
+   * LEAD: TECLADO (OCT − and +, SCALE LOCK) and ESCALA (the key SCALE LOCK follows,
+   * shared with BASS and SYNTH).
+   */
+  private leadKeys(): TemplateResult[] {
+    const { octave, scaleLock } = this.lead.value;
+    return [
+      html`<section data-section="keyboard">
+        <h6>${TEXT.keyboardSection}</h6>
+        <div class="kk stack">
+          <div class="stp">
+            <button
+              class="pk"
+              id="oct-down"
+              aria-label=${TEXT.octaveDown}
+              ?disabled=${octave <= LEAD_OCTAVE_MIN}
+              @click=${() => this.onOctave(-1)}
+            >
+              −
+            </button>
+            <span class="mini" id="octave">${TEXT.octave} ${leadOctaveName(octave)}</span>
+            <button
+              class="pk"
+              id="oct-up"
+              aria-label=${TEXT.octaveUp}
+              ?disabled=${octave >= LEAD_OCTAVE_MAX}
+              @click=${() => this.onOctave(1)}
+            >
+              +
+            </button>
+          </div>
+          <button
+            class=${classMap({ pk: true, led: true, on: scaleLock })}
+            id="lock"
+            aria-label=${TEXT.scaleLockHint}
+            aria-pressed=${scaleLock}
+            @click=${this.onScaleLock}
+          >
+            ${TEXT.scaleLock}
+          </button>
+        </div>
+      </section>`,
+      this.keySection(),
+    ];
+  }
+
+  /** DRONE: SONIDO (presets), MODO (TOUCH or HOLD), CAPAS (STOP, CLEAR) and ESCALA. */
+  private droneKeys(): TemplateResult[] {
+    const { preset, mode } = this.drone.value;
+    const layers = this.live.value.layers.length;
+    return [
+      this.ledKeys('sound', TEXT.soundSection, 'trio', DRONE_PRESETS, DRONE_PRESET_LABELS, preset, (p) =>
+        this.onDronePreset(p),
+      ),
+      this.ledKeys('mode', TEXT.modeSection, 'stack', DRONE_MODES, DRONE_MODE_LABELS, mode, (m) => this.onDroneMode(m)),
+      html`<section data-section="layers">
+        <h6 id="layers">${TEXT.layersSection} ${layers}/${DRONE_MAX_LAYERS}</h6>
+        <div class="kk stack">
+          <button class="pk" id="stop" aria-label=${TEXT.layersStopHint} @click=${this.onDroneStop}>
+            ${TEXT.layersStop}
+          </button>
+          <button class="pk" id="clear-layers" aria-label=${TEXT.clearLayersHint} @click=${this.onDroneClear}>
+            ${TEXT.clearLayers}
+          </button>
+        </div>
+      </section>`,
+      this.keySection(),
+    ];
+  }
+
   /** A row of keys with LEDs, one lit: modes, presets. `layout` picks how they wrap. */
   private ledKeys<T extends string>(
     name: 'mode' | 'sound',
     title: string,
-    layout: 'modes' | 'quad',
+    layout: 'modes' | 'quad' | 'trio' | 'stack',
     ids: readonly T[],
     labels: Readonly<Record<T, string>>,
     current: T,
@@ -735,9 +858,12 @@ export class MonoPanel extends LitElement {
       }
       case 'xy':
         return html`<mono-xy-pad
-          .x=${this.drone.value.x}
-          .y=${this.drone.value.y}
-          @xy-input=${this.onPad}
+          .dots=${this.padDots()}
+          .noteCaption=${TEXT.padNote}
+          .motionCaption=${TEXT.padMotion}
+          @pad-down=${this.onPadDown}
+          @pad-move=${this.onPadMove}
+          @pad-up=${this.onPadUp}
         ></mono-xy-pad>`;
       case 'type':
         return html`<mono-type-switch
@@ -747,7 +873,14 @@ export class MonoPanel extends LitElement {
       case 'wave':
         return html`<mono-wave></mono-wave>`;
       case 'keys':
-        return html`<mono-keys @key-press=${this.onKey}></mono-keys>`;
+        return html`<mono-keys
+          .held=${this.live.value.keys}
+          .dimmed=${this.outOfScale()}
+          .octave=${4 + this.lead.value.octave}
+          @key-down=${this.onKeyDown}
+          @key-move=${this.onKeyMove}
+          @key-up=${this.onKeyUp}
+        ></mono-keys>`;
       case 'tempo':
         return html`<mono-tempo
           .bpm=${this.bpm.value}
@@ -756,6 +889,30 @@ export class MonoPanel extends LitElement {
           @transport-toggle=${this.onTransport}
         ></mono-tempo>`;
     }
+  }
+
+  /** DRONE layers as the pad draws them, each with its note. */
+  private padDots(): PadDot[] {
+    const { root, scale } = this.key.value;
+    return this.live.value.layers.map((layer) => ({
+      id: layer.id,
+      x: layer.x,
+      y: layer.y,
+      touched: layer.touch !== null,
+      label: droneNoteName(layer.x, root, scale),
+    }));
+  }
+
+  /** LEAD keys outside the scale, dimmed while SCALE LOCK is on (they play its nearest note). */
+  private outOfScale(): ReadonlySet<number> {
+    const { octave, scaleLock } = this.lead.value;
+    const { root, scale } = this.key.value;
+    const out = new Set<number>();
+    if (!scaleLock) return out;
+    for (let semitone = 0; semitone < LEAD_KEY_COUNT; semitone++) {
+      if (!inScale(LEAD_BASE_MIDI + octave * 12 + semitone, root, scale)) out.add(semitone);
+    }
+    return out;
   }
 
   /** Step grid captions; BASS and SYNTH name their note rows after the key. */
@@ -867,18 +1024,63 @@ export class MonoPanel extends LitElement {
     this.reading = `${NODE_NAMES.master} ${TEXT.clickSection} ${TEXT.clickVolume} ${Math.round(event.detail.value * 127)}`;
   };
 
-  private readonly onPad = (event: XyInputEvent): void => {
-    store.setDronePosition(event.detail);
-    pulse('drone', PULSE_MS.pad);
+  private onOctave(direction: 1 | -1): void {
+    store.nudgeLeadOctave(direction);
+    this.reading = null;
+  }
+
+  private readonly onScaleLock = (): void => {
+    store.toggleScaleLock();
+    this.reading = null;
+  };
+
+  private readonly onKeyDown = (event: KeyDownEvent): void => {
+    live.keyDown(event.detail.touch, event.detail.semitone);
+  };
+
+  private readonly onKeyMove = (event: KeyDownEvent): void => {
+    live.keyMove(event.detail.touch, event.detail.semitone);
+  };
+
+  private readonly onKeyUp = (event: KeyUpEvent): void => {
+    live.keyUp(event.detail.touch);
+  };
+
+  private onDronePreset(preset: DronePreset): void {
+    store.setDronePreset(preset);
+    this.reading = null;
+  }
+
+  private onDroneMode(mode: DroneMode): void {
+    store.setDroneMode(mode);
+    this.reading = `${NODE_NAMES.drone} ${TEXT.modeSection} ${DRONE_MODE_LABELS[mode]}`;
+  }
+
+  private readonly onDroneStop = (): void => {
+    live.stopDrone();
+  };
+
+  private readonly onDroneClear = (): void => {
+    live.clearDrone();
+  };
+
+  private readonly onPadDown = (event: PadDownEvent): void => {
+    const { touch, x, y } = event.detail;
+    live.padDown(touch, { x, y });
+  };
+
+  private readonly onPadMove = (event: PadDownEvent): void => {
+    const { touch, x, y } = event.detail;
+    live.padMove(touch, { x, y });
+  };
+
+  private readonly onPadUp = (event: PadUpEvent): void => {
+    live.padUp(event.detail.touch);
   };
 
   private readonly onType = (event: TypeChangeEvent): void => {
     store.setDistType(event.detail.type);
     pulse('dist', PULSE_MS.type);
-  };
-
-  private readonly onKey = (): void => {
-    pulse('lead', PULSE_MS.key);
   };
 
   private readonly onTempo = (event: TempoNudgeEvent): void => {

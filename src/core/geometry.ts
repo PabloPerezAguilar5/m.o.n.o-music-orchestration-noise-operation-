@@ -31,3 +31,6 @@ export const clampNodePosition = (point: Point): Point => ({
   x: clamp(point.x, NODE_BOUNDS.minX, NODE_BOUNDS.maxX),
   y: clamp(point.y, NODE_BOUNDS.minY, NODE_BOUNDS.maxY),
 });
+
+/** Clamps to 0..1; anything that is not a finite number becomes 0. */
+export const clamp01 = (value: number): number => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));

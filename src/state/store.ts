@@ -6,6 +6,8 @@ import {
   toggleBassCell,
   type BassMode,
 } from '../core/bass-patterns';
+import type { DroneMode, DronePreset } from '../core/drone';
+import { clampLeadOctave } from '../core/lead';
 import { SCALE_IDS } from '../core/scales';
 import { EMPTY_DRUM_PATTERN, generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
@@ -110,7 +112,7 @@ export class Store extends Emitter implements Source<AppState> {
     }
   }
 
-  // Key (shared by BASS and SYNTH) ------------------------------------------------------------
+  // Key (shared by BASS, SYNTH, LEAD and DRONE) -------------------------------------------------------
 
   /** Steps the tonic up or down a semitone, wrapping around the octave. */
   nudgeRoot(direction: 1 | -1): void {
@@ -126,7 +128,6 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ key: { ...key, scale } });
   }
 
-  /** Hand edit of a DRUM step: keeps the generation, so it sounds from the next step. */
   /**
    * BORRAR: empties the pattern of a sequenced node (DRUM, BASS or SYNTH). Like a hand
    * edit, it keeps the generation and goes silent from the next step; CAOS, RNDM and
@@ -138,6 +139,7 @@ export class Store extends Emitter implements Source<AppState> {
     else if (id === 'synth') this.update({ synth: { ...this.state.synth, pattern: EMPTY_SYNTH_PATTERN } });
   }
 
+  /** Hand edit of a DRUM step: keeps the generation, so it sounds from the next step. */
   toggleDrumStep(row: number, col: number): void {
     const { drum } = this.state;
     const pattern = toggleDrumStep(drum.pattern, row, col);
@@ -321,8 +323,36 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ transport: { ...transport, step } });
   }
 
-  setDronePosition(point: Point): void {
-    this.update({ drone: { x: clamp(point.x, 0, 1), y: clamp(point.y, 0, 1) } });
+  // LEAD ----------------------------------------------------------------------------------------
+
+  /** OCT − and +: moves the keyboard an octave, within its range. */
+  nudgeLeadOctave(direction: 1 | -1): void {
+    const { lead } = this.state;
+    const octave = clampLeadOctave(lead.octave + direction);
+    if (octave === lead.octave) return;
+    this.update({ lead: { ...lead, octave } });
+  }
+
+  /** SCALE LOCK on or off. */
+  toggleScaleLock(): void {
+    const { lead } = this.state;
+    this.update({ lead: { ...lead, scaleLock: !lead.scaleLock } });
+  }
+
+  // DRONE ---------------------------------------------------------------------------------------
+
+  /** Picks the sound of new layers; the ones sounding keep theirs. */
+  setDronePreset(preset: DronePreset): void {
+    const { drone } = this.state;
+    if (drone.preset === preset) return;
+    this.update({ drone: { ...drone, preset } });
+  }
+
+  /** TOUCH or HOLD. Going back to TOUCH ends the held layers (live.ts). */
+  setDroneMode(mode: DroneMode): void {
+    const { drone } = this.state;
+    if (drone.mode === mode) return;
+    this.update({ drone: { ...drone, mode } });
   }
 
   setDistType(type: DistType): void {

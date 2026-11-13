@@ -52,6 +52,42 @@ const defaultSynthParams = (): ParamValues => ({
   [MACRO_PARAM]: MACRO_DEFAULT,
 });
 
+/**
+ * MASTER levels keep the prototype's knob positions; LEAD, added after it, starts at
+ * unity like DRUM.
+ */
+const defaultMasterParams = (): ParamValues => ({
+  synthLevel: 0.35,
+  drumLevel: 0.46,
+  bassLevel: 0.57,
+  droneLevel: 0.68,
+  leadLevel: 0.5,
+  space: 0.79,
+  volume: 0.9,
+  [MACRO_PARAM]: MACRO_DEFAULT,
+});
+
+/** LEAD: a bright, playable mono line. CAOS starts at 0: the keys play what is pressed. */
+const defaultLeadParams = (): ParamValues => ({
+  wave: 0.3,
+  cutoff: 0.6,
+  resonance: 0.3,
+  attack: 0.05,
+  release: 0.3,
+  glide: 0.2,
+  [MACRO_PARAM]: 0,
+});
+
+/** DRONE: half-open filter, a slow swell, a long tail, a little drift. */
+const defaultDroneParams = (): ParamValues => ({
+  filter: 0.5,
+  attack: 0.35,
+  release: 0.45,
+  detune: 0.3,
+  volume: 0.7,
+  [MACRO_PARAM]: MACRO_DEFAULT,
+});
+
 /** DRUM knobs are real controls: tone centred (original pitch), volume at unity. */
 const defaultDrumParams = (): ParamValues => {
   const values: Record<string, number> = { [MACRO_PARAM]: MACRO_DEFAULT };
@@ -70,6 +106,9 @@ export function createInitialState(): AppState {
   params.drum = defaultDrumParams();
   params.bass = defaultBassParams();
   params.synth = defaultSynthParams();
+  params.master = defaultMasterParams();
+  params.lead = defaultLeadParams();
+  params.drone = defaultDroneParams();
   return {
     added: ['master'],
     selected: 'master',
@@ -101,8 +140,9 @@ export function createInitialState(): AppState {
       preset: 'pluck',
       pattern: DEFAULT_SYNTH_PATTERN,
     },
+    lead: { octave: 0, scaleLock: false },
+    drone: { preset: 'drone', mode: 'touch' },
     unplugged: [],
-    drone: { x: 0.5, y: 0.5 },
     distType: 'soft',
     transport: { playing: false, bpm: BPM_DEFAULT, step: -1 },
     metronome: { on: false, volume: 0.7 },

@@ -67,10 +67,32 @@ const hideMetronome = (page: Page): Promise<void> =>
     root.append(style);
   });
 
+/**
+ * 9. MASTER panel: a LEAD level knob sits between DRONE and ESPACIO (stage 5: the MASTER
+ *    sums LEAD and DRONE, each with its level). The prototype has no LEAD level, so the
+ *    knob is taken out of the layout (display: none) in the app's screenshots, and the
+ *    other six knobs land where the prototype has them. Affects initial and
+ *    panel-master-all-nodes.
+ */
+const hideLeadLevel = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const root = document.querySelector('mono-app')?.shadowRoot?.querySelector('mono-panel')?.shadowRoot;
+    if (!root?.querySelector('mono-knob[data-param="leadLevel"]')) throw new Error('LEAD level knob not found');
+    const style = document.createElement('style');
+    style.textContent = 'mono-knob[data-param="leadLevel"] { display: none; }';
+    root.append(style);
+  });
+
 /** Applied to the app right before the screenshot of the named state. */
 const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
-  initial: hideMetronome,
-  'panel-master-all-nodes': hideMetronome,
+  initial: async (page) => {
+    await hideMetronome(page);
+    await hideLeadLevel(page);
+  },
+  'panel-master-all-nodes': async (page) => {
+    await hideMetronome(page);
+    await hideLeadLevel(page);
+  },
 };
 
 /**
@@ -118,10 +140,31 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  *    panel-synth, already excluded above. The space bar now plays and stops; it draws
  *    nothing.
  */
+/*
+ * 10. panel-lead (stage 5): LEAD became a real instrument, played live. The keyboard
+ *     grew to two octaves from C plus the top C (15 white keys, C4 … C6; note 3 still
+ *     patches the prototype's keys, but this state is no longer compared), keys stay lit
+ *     while held, and keys outside the scale are dimmed under SCALE LOCK. The knob
+ *     DETUNE became GLIDE, and the header gained TECLADO (OCT − and +, SCALE LOCK) and
+ *     ESCALA (shared with BASS and SYNTH); the display shows the keyboard's range.
+ *     No prototype equivalent.
+ */
+/*
+ * 11. panel-drone (stage 5): DRONE became a real instrument, played live. Its knobs are
+ *     now FILTRO, ATAQUE, RELEASE, DESAF. and VOL (TONO went: the presets set the
+ *     timbre). The header gained SONIDO (DRONE, PAD, GLASS, NOISE, ALIEN), MODO (TOUCH,
+ *     HOLD), CAPAS (STOP, CLEAR, with the layer count) and ESCALA; the display shows sound
+ *     and key. The pad draws one dot per layer with its note (none while silent; the
+ *     prototype has one dot, centred) and captions its axes. No prototype equivalent.
+ *     The DRONE node no longer flashes on each beat: it is lit while its layers sound.
+ *     In the walk nothing is touched on the pad, so every other state is unchanged.
+ */
 const EXCLUDED_STATES: Readonly<Record<string, string>> = {
   'panel-drum': 'DRUM panel redesigned in stage 2 and after',
   'panel-bass': 'BASS panel redesigned in stage 3',
   'panel-synth': 'SYNTH panel redesigned in stage 4',
+  'panel-drone': 'DRONE panel redesigned in stage 5',
+  'panel-lead': 'LEAD panel redesigned in stage 5',
 };
 
 const NODE_ORDER = ['synth', 'drum', 'bass', 'drone', 'dist', 'lfo', 'lead'] as const;

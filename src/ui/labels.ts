@@ -1,4 +1,5 @@
 import type { BassMode } from '../core/bass-patterns';
+import type { DroneMode, DronePreset } from '../core/drone';
 import { DEGREES, degreeName, ROOTS, SYNTH_STEPS, synthMidi, type ScaleId } from '../core/scales';
 import type { SynthMode } from '../core/synth-patterns';
 import type { SynthPreset } from '../core/synth-voices';
@@ -30,14 +31,14 @@ export const NODE_CODES: Readonly<Record<NodeId, string>> = {
 
 /** Knob captions, in the same order as NODE_SPECS[id].params. */
 export const KNOB_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
-  master: ['SYNTH', 'DRUM', 'BASS', 'DRONE', 'ESPACIO', 'VOL'],
+  master: ['SYNTH', 'DRUM', 'BASS', 'DRONE', 'LEAD', 'ESPACIO', 'VOL'],
   synth: ['ONDA', 'CUTOFF', 'RESO', 'ATAQUE', 'RELEASE', 'DETUNE'],
   drum: ['TONO', 'VOL', 'TONO', 'VOL', 'TONO', 'VOL', 'TONO', 'VOL'],
   bass: ['CUTOFF', 'RESO', 'DECAY', 'DRIVE'],
-  drone: ['TONO', 'DESAF.', 'FILTRO', 'VOL'],
+  drone: ['FILTRO', 'ATAQUE', 'RELEASE', 'DESAF.', 'VOL'],
   dist: ['DRIVE', 'TONO', 'MEZCLA'],
   lfo: ['FORMA', 'VELOC.', 'CANT.'],
-  lead: ['ONDA', 'CUTOFF', 'RESO', 'ATAQUE', 'RELEASE', 'DETUNE'],
+  lead: ['ONDA', 'CUTOFF', 'RESO', 'ATAQUE', 'RELEASE', 'GLIDE'],
 };
 
 /**
@@ -85,6 +86,19 @@ export const SYNTH_PRESET_LABELS: Readonly<Record<SynthPreset, string>> = {
   pad: 'PAD',
   stab: 'STAB',
   glass: 'GLASS',
+};
+
+export const DRONE_PRESET_LABELS: Readonly<Record<DronePreset, string>> = {
+  drone: 'DRONE',
+  pad: 'PAD',
+  glass: 'GLASS',
+  noise: 'NOISE',
+  alien: 'ALIEN',
+};
+
+export const DRONE_MODE_LABELS: Readonly<Record<DroneMode, string>> = {
+  touch: 'TOUCH',
+  hold: 'HOLD',
 };
 
 export const SCALE_LABELS: Readonly<Record<ScaleId, string>> = {
@@ -175,6 +189,19 @@ export const TEXT = {
   soundSection: 'SONIDO',
   soundHint: 'Sonido',
   cableHint: 'Cortar o reconectar el cable',
+  keyboardSection: 'TECLADO',
+  octave: 'OCT',
+  octaveDown: 'Bajar una octava',
+  octaveUp: 'Subir una octava',
+  scaleLock: 'SCALE LOCK',
+  scaleLockHint: 'Scale lock: cada tecla toca la nota más cercana de la escala',
+  layersSection: 'CAPAS',
+  layersStop: 'STOP',
+  layersStopHint: 'Apagar todas las capas con su release',
+  clearLayers: 'CLEAR',
+  clearLayersHint: 'Silenciar todo ya, colas de efecto incluidas',
+  padNote: 'NOTA',
+  padMotion: 'FILTRO · MOVIMIENTO',
   missing: 'FALTA',
   audioBlocked: 'AUDIO BLOQUEADO · TOCÁ ▶',
   audioUnavailable: 'SIN AUDIO EN ESTE NAVEGADOR',

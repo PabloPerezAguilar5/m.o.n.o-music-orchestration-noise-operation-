@@ -1,10 +1,10 @@
 import { WebAudioBackend } from './audio/web-audio-backend';
-import { activity, cues, pulse, store } from './state';
+import { activity, cues, live, pulse, store } from './state';
 import { linkAudio } from './state/audio-link';
 import './ui/mono-app';
 
 const backend = new WebAudioBackend();
-linkAudio(store, backend, pulse, cues);
+linkAudio(store, backend, pulse, cues, live);
 
 // Browsers only let audio start inside a user gesture. The first touch anywhere
 // (the + button, play, anything) wakes it up; later touches retry if it was blocked.
@@ -21,6 +21,7 @@ if (import.meta.env.DEV) {
       clickLevel: () => backend.clickLevel(),
       store,
       activity,
+      live,
     },
   });
 }
