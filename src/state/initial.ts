@@ -140,7 +140,7 @@ export function createInitialState(): AppState {
       preset: 'pluck',
       pattern: DEFAULT_SYNTH_PATTERN,
     },
-    lead: { octave: 0, scaleLock: false },
+    lead: { octave: 0, scaleLock: false, hold: false },
     drone: { preset: 'drone', mode: 'touch' },
     unplugged: [],
     distType: 'soft',

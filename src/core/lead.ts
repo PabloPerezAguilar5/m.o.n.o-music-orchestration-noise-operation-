@@ -117,8 +117,10 @@ interface Held {
 /**
  * Multitouch on a mono voice: every finger down is remembered, the last one pressed
  * sounds. Pressing another key glides to it (legato); lifting the sounding finger
- * goes back to the previous one still down; lifting the last one releases the note.
- * Each note-on has its own id, so a note-off never cuts a newer note.
+ * goes back to the previous one still down; lifting the last one releases the note,
+ * unless it is lifted with HOLD on: then the note keeps sounding (latched) until a new
+ * key replaces it or the hold is let go. Each note-on has its own id, so a note-off
+ * never cuts a newer note.
  */
 export class LeadNotes {
   /** Fingers down, oldest first; the last one is sounding. */
@@ -136,11 +138,20 @@ export class LeadNotes {
     return this.sounding !== null;
   }
 
-  /** A finger goes down on a note. */
+  /** Whether the note sounding is held by HOLD, with no finger down. */
+  get latched(): boolean {
+    return this.sounding !== null && this.held.length === 0;
+  }
+
+  /**
+   * A finger goes down on a note. With another finger down it changes note without
+   * retriggering (legato); over a latched note it retriggers and replaces it.
+   */
   press(touch: number, midi: number, accent = false): LeadNoteEvent[] {
     this.held = this.held.filter((finger) => finger.touch !== touch);
+    const legato = this.held.length > 0;
     this.held.push({ touch, midi, accent });
-    return [this.on(midi, accent, this.sounding !== null)];
+    return [this.on(midi, accent, legato)];
   }
 
   /** A finger slides onto another note: the sounding one glides there. */
@@ -153,8 +164,8 @@ export class LeadNotes {
     return index === this.held.length - 1 ? [this.on(midi, finger.accent, true)] : [];
   }
 
-  /** A finger lifts. */
-  release(touch: number): LeadNoteEvent[] {
+  /** A finger lifts. With `latch` (HOLD on) the last finger leaves its note sounding. */
+  release(touch: number, latch = false): LeadNoteEvent[] {
     const index = this.held.findIndex((finger) => finger.touch === touch);
     if (index < 0) return [];
     const wasSounding = index === this.held.length - 1;
@@ -162,7 +173,12 @@ export class LeadNotes {
     if (!wasSounding) return [];
     const previous = this.held.at(-1);
     if (previous) return [this.on(previous.midi, previous.accent, true)];
-    return this.off();
+    return latch ? [] : this.off();
+  }
+
+  /** HOLD let go: a latched note is released (a finger still down keeps its note). */
+  releaseLatched(): LeadNoteEvent[] {
+    return this.latched ? this.off() : [];
   }
 
   /** Every finger lifts at once (cable cut, node removed, transport stopped). */

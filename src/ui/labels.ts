@@ -195,6 +195,8 @@ export const TEXT = {
   octaveUp: 'Subir una octava',
   scaleLock: 'SCALE LOCK',
   scaleLockHint: 'Scale lock: cada tecla toca la nota más cercana de la escala',
+  leadHold: 'HOLD',
+  leadHoldHint: 'Hold: la última nota tocada sigue sonando al soltar la tecla',
   layersSection: 'CAPAS',
   layersStop: 'STOP',
   layersStopHint: 'Apagar todas las capas con su release',

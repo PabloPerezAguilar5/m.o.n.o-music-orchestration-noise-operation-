@@ -490,4 +490,33 @@ test.describe('panel', () => {
     await expect(page.locator('.wk.p')).toHaveCount(0);
     await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
   });
+
+  test('HOLD del LEAD deja sonar la nota soltada hasta apagarlo', async ({ page }) => {
+    await addNode(page, 'lead');
+    await page.click('#play'); // stop, so only the held note can light the node
+    await page.click('#hold');
+    await expect(page.locator('#hold')).toHaveAttribute('aria-pressed', 'true');
+
+    const tap = async (index: number) => {
+      const key = page.locator('mono-keys .wk').nth(index);
+      const box = (await key.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height - 8);
+      await page.mouse.down();
+      await page.mouse.up();
+      return key;
+    };
+    const first = await tap(2);
+    await page.waitForTimeout(600);
+    await expect(first).toHaveClass(/\bp\b/);
+    await expect(page.locator('#nd-lead')).toHaveClass(/\bon\b/);
+    // Another key takes its place.
+    const second = await tap(4);
+    await expect(second).toHaveClass(/\bp\b/);
+    await expect(page.locator('mono-keys .wk.p')).toHaveCount(1);
+
+    await page.click('#hold');
+    await expect(page.locator('#hold')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('mono-keys .wk.p')).toHaveCount(0);
+    await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
+  });
 });

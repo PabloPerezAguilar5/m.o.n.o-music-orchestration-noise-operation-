@@ -339,6 +339,12 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ lead: { ...lead, scaleLock: !lead.scaleLock } });
   }
 
+  /** HOLD on or off (off lets the held note go, see live.ts). */
+  toggleLeadHold(): void {
+    const { lead } = this.state;
+    this.update({ lead: { ...lead, hold: !lead.hold } });
+  }
+
   // DRONE ---------------------------------------------------------------------------------------
 
   /** Picks the sound of new layers; the ones sounding keep theirs. */

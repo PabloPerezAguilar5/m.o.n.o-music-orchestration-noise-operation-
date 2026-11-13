@@ -750,6 +750,23 @@ test.describe('LEAD', () => {
     expect(errors).toEqual([]);
   });
 
+  test('HOLD deja sonar la nota al soltar la tecla; apagarlo la suelta', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'lead');
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+    await page.click('#play'); // stopped: only the held note sounds
+    await page.click('#hold');
+
+    await holdKey(page, 4);
+    await page.mouse.up();
+    await page.waitForTimeout(1500); // well past the default release
+    expect(await peakLevel(page), 'nota sostenida').toBeGreaterThan(0.01);
+    await page.click('#hold');
+    await waitQuiet(page, 5000, 'HOLD apagado');
+    expect(errors).toEqual([]);
+  });
+
   test('OCT y SCALE LOCK cambian lo que toca cada tecla; la escala es la compartida', async ({ page }) => {
     await page.goto('/');
     await addNode(page, 'lead');

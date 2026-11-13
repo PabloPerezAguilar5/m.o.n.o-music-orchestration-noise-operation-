@@ -11,7 +11,7 @@ import type { AppState } from './types';
 
 /** What is being played by hand right now. Never stored or saved. */
 export interface LiveState {
-  /** LEAD keys held down, as semitones above the keyboard's first C. */
+  /** LEAD keys held down (or latched by HOLD), as semitones above the keyboard's first C. */
   readonly keys: ReadonlySet<number>;
   /** DRONE layers sounding, oldest first. */
   readonly layers: readonly DroneLayer[];
@@ -51,6 +51,8 @@ export class Live extends Emitter implements Source<LiveState> {
   private readonly notes = new LeadNotes();
   /** Finger → LEAD key under it. */
   private readonly fingers = new Map<number, number>();
+  /** The key whose note HOLD keeps sounding after its finger lifted. */
+  private latchedKey: number | null = null;
   private readonly layers = new DroneLayers();
   private readonly eventListeners = new Set<LiveListener>();
   private previous: AppState;
@@ -84,6 +86,7 @@ export class Live extends Emitter implements Source<LiveState> {
     if (!state.added.includes('lead')) return;
     const { midi, accent } = this.leadNote(state, semitone);
     this.fingers.set(touch, semitone);
+    this.latchedKey = null;
     this.sendLead(this.notes.press(touch, midi, accent));
   }
 
@@ -94,10 +97,14 @@ export class Live extends Emitter implements Source<LiveState> {
     this.sendLead(this.notes.move(touch, this.leadNote(this.store.getState(), semitone).midi));
   }
 
-  /** A finger lifts. */
+  /** A finger lifts. With HOLD on, the last one leaves its note sounding. */
   keyUp(touch: number): void {
-    if (!this.fingers.delete(touch)) return;
-    this.sendLead(this.notes.release(touch));
+    const semitone = this.fingers.get(touch);
+    if (semitone === undefined) return;
+    this.fingers.delete(touch);
+    const events = this.notes.release(touch, this.store.getState().lead.hold);
+    if (this.notes.latched) this.latchedKey = semitone;
+    this.sendLead(events);
   }
 
   private leadNote(state: AppState, semitone: number): { midi: number; accent: boolean } {
@@ -116,6 +123,7 @@ export class Live extends Emitter implements Source<LiveState> {
   private releaseLead(): void {
     if (!this.notes.playing && this.fingers.size === 0) return;
     this.fingers.clear();
+    this.latchedKey = null;
     this.notes.releaseAll();
     this.send([{ node: 'lead', type: 'panic' }]);
   }
@@ -165,6 +173,10 @@ export class Live extends Emitter implements Source<LiveState> {
     this.previous = next;
     const stopped = previous.transport.playing && !next.transport.playing;
     if (stopped || (plays(previous, 'lead') && !plays(next, 'lead'))) this.releaseLead();
+    if (previous.lead.hold && !next.lead.hold) {
+      this.latchedKey = null;
+      this.send(this.notes.releaseLatched().map((event) => ({ node: 'lead', ...event })));
+    }
     // Unheard (cable cut, node removed): silence at once, so nothing is left to come back
     // when the cable is plugged in again. Transport stopped: the layers fade with their release.
     const unplugged = plays(previous, 'drone') && !plays(next, 'drone');
@@ -187,6 +199,7 @@ export class Live extends Emitter implements Source<LiveState> {
 
   private changed(): void {
     const keys = new Set(this.fingers.values());
+    if (this.latchedKey !== null) keys.add(this.latchedKey);
     const layers = this.layers.list;
     const sameKeys = keys.size === this.state.keys.size && [...keys].every((key) => this.state.keys.has(key));
     if (!sameKeys || layers !== this.state.layers) {

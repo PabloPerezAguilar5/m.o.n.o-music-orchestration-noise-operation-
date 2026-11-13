@@ -67,6 +67,8 @@ export interface LeadState {
   readonly octave: number;
   /** SCALE LOCK: every key plays the nearest note of the shared key. */
   readonly scaleLock: boolean;
+  /** HOLD: the last note played keeps sounding after the fingers lift. */
+  readonly hold: boolean;
 }
 
 /** DRONE pad settings (the layers themselves are played live, see live.ts). */

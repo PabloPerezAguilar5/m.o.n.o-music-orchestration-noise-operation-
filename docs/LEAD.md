@@ -52,6 +52,24 @@ Lo que se agrego al motor (sirve a cualquier instrumento mono):
   220 ms).
 - Se puede tocar con el transporte detenido: es en vivo.
 
+## HOLD
+
+Tecla **HOLD** (con LED) en TECLADO, al lado de SCALE LOCK. Con HOLD prendido, al
+levantar el ultimo dedo **la nota sigue sonando** (la tecla queda encendida y el
+nodo tambien).
+
+- Una tecla nueva **reemplaza** la nota sostenida (es una voz mono) y la
+  redispara: es una nota nueva, no un legato. Con GLIDE arriba se desliza desde
+  la anterior. Al soltarla queda sostenida ella.
+- Con varios dedos se comporta igual que sin HOLD; solo el ultimo dedo que se
+  levanta deja su nota sostenida.
+- **Apagar HOLD suelta la nota** con su RELEASE. *Decision:* volver a tocar la
+  misma tecla la redispara, no la apaga (no hay toque "para callar"); para
+  callar se apaga HOLD.
+- Cortar el cable, sacar el nodo o parar el transporte sueltan la nota
+  sostenida como cualquier otra. HOLD queda prendido.
+- HOLD es un ajuste del nodo (`lead.hold` en el store), como SCALE LOCK.
+
 ## SCALE LOCK
 
 Lleva cada tecla a la **nota mas cercana** de la tonica y escala compartidas
@@ -85,7 +103,8 @@ prototipo: el ancho lo da el par de osciladores fijo). Mas CAOS.
 
 | Que pasa | Que hace el LEAD |
 | --- | --- |
-| Se suelta la ultima tecla | La nota cae con su RELEASE; el nodo queda encendido lo que dura la cola. |
+| Se suelta la ultima tecla | La nota cae con su RELEASE; el nodo queda encendido lo que dura la cola. Con HOLD, sigue sonando. |
+| Se apaga HOLD | La nota sostenida cae con su RELEASE. |
 | Se para el transporte | Todas las notas caen con su RELEASE. |
 | Se corta el cable | Silencio en el acto (liberacion dura, ~3 ms). Al reconectar no vuelve nada. |
 | Se saca el nodo | Silencio en el acto; el modulo se libera. |
@@ -104,8 +123,8 @@ procesando sin oirse y sus colas se apagan solas. Aplica a todos los nodos.
 
 ## Encendido en el lienzo
 
-El nodo se enciende **solo mientras suena**: con una tecla apretada y el cable
-conectado. Al soltar queda encendido lo que dura la cola del RELEASE (entre 80 ms
+El nodo se enciende **solo mientras suena**: con una tecla apretada (o una nota
+sostenida por HOLD) y el cable conectado. Al soltar queda encendido lo que dura la cola del RELEASE (entre 80 ms
 y 3 s). Con el cable cortado no se enciende.
 
 ## Reloj y cambios estructurales

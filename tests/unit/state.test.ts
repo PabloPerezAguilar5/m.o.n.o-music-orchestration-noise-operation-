@@ -280,7 +280,9 @@ describe('Store', () => {
     store.setDroneMode('hold');
     expect(store.getState().drone).toEqual({ preset: 'alien', mode: 'hold' });
 
-    expect(store.getState().lead).toEqual({ octave: 0, scaleLock: false });
+    expect(store.getState().lead).toEqual({ octave: 0, scaleLock: false, hold: false });
+    store.toggleLeadHold();
+    expect(store.getState().lead.hold).toBe(true);
     for (let i = 0; i < 9; i++) store.nudgeLeadOctave(1);
     expect(store.getState().lead.octave).toBe(2); // C6 … C8 at most
     for (let i = 0; i < 9; i++) store.nudgeLeadOctave(-1);

@@ -344,6 +344,16 @@ export class MonoPanel extends LitElement {
         top: 3px;
         height: 2px;
       }
+      /* Two keys side by side in a stack row (LEAD: HOLD, SCALE LOCK). */
+      .pair {
+        display: flex;
+        gap: 4px;
+      }
+      .pair .pk {
+        flex: 1;
+        padding-left: 4px;
+        padding-right: 4px;
+      }
       /* − value + : a small display between two keys. */
       .stp {
         display: flex;
@@ -708,11 +718,11 @@ export class MonoPanel extends LitElement {
   }
 
   /**
-   * LEAD: TECLADO (OCT − and +, SCALE LOCK) and ESCALA (the key SCALE LOCK follows,
-   * shared with BASS and SYNTH).
+   * LEAD: TECLADO (OCT − and +, HOLD, SCALE LOCK) and ESCALA (the key SCALE LOCK
+   * follows, shared with BASS and SYNTH).
    */
   private leadKeys(): TemplateResult[] {
-    const { octave, scaleLock } = this.lead.value;
+    const { octave, scaleLock, hold } = this.lead.value;
     return [
       html`<section data-section="keyboard">
         <h6>${TEXT.keyboardSection}</h6>
@@ -738,15 +748,26 @@ export class MonoPanel extends LitElement {
               +
             </button>
           </div>
-          <button
-            class=${classMap({ pk: true, led: true, on: scaleLock })}
-            id="lock"
-            aria-label=${TEXT.scaleLockHint}
-            aria-pressed=${scaleLock}
-            @click=${this.onScaleLock}
-          >
-            ${TEXT.scaleLock}
-          </button>
+          <div class="pair">
+            <button
+              class=${classMap({ pk: true, led: true, on: hold })}
+              id="hold"
+              aria-label=${TEXT.leadHoldHint}
+              aria-pressed=${hold}
+              @click=${this.onLeadHold}
+            >
+              ${TEXT.leadHold}
+            </button>
+            <button
+              class=${classMap({ pk: true, led: true, on: scaleLock })}
+              id="lock"
+              aria-label=${TEXT.scaleLockHint}
+              aria-pressed=${scaleLock}
+              @click=${this.onScaleLock}
+            >
+              ${TEXT.scaleLock}
+            </button>
+          </div>
         </div>
       </section>`,
       this.keySection(),
@@ -1032,6 +1053,10 @@ export class MonoPanel extends LitElement {
   private readonly onScaleLock = (): void => {
     store.toggleScaleLock();
     this.reading = null;
+  };
+
+  private readonly onLeadHold = (): void => {
+    store.toggleLeadHold();
   };
 
   private readonly onKeyDown = (event: KeyDownEvent): void => {

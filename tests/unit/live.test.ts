@@ -100,6 +100,27 @@ describe('multitoque del LEAD (voz mono)', () => {
     expect(notes.releaseAll()).toEqual([]);
   });
 
+  it('HOLD: el último dedo deja su nota sonando; una tecla nueva la reemplaza redisparando', () => {
+    const notes = new LeadNotes();
+    notes.press(1, 60);
+    notes.press(2, 64);
+    expect(notes.release(1, true)).toEqual([]); // not the sounding finger
+    expect(notes.release(2, true)).toEqual([]); // the last one: latched
+    expect(notes.latched).toBe(true);
+    expect(notes.playing).toBe(true);
+    // A new key over the latched note retriggers it (no finger was down).
+    const [next] = notes.press(3, 67);
+    expect(next).toMatchObject({ type: 'on', midi: 67, legato: false });
+    expect(notes.latched).toBe(false);
+    // With a finger down, HOLD let go changes nothing.
+    expect(notes.releaseLatched()).toEqual([]);
+    notes.release(3, true);
+    const [off] = notes.releaseLatched();
+    expect(off).toEqual({ type: 'off', id: next!.type === 'on' ? next!.id : -1 });
+    expect(notes.playing).toBe(false);
+    expect(notes.releaseLatched()).toEqual([]);
+  });
+
   it('CAOS en 0 toca exactamente lo apretado; arriba agrega acentos, saltos y desafinación', () => {
     const random = createRng(1);
     for (let i = 0; i < 50; i++) expect(leadVariation(random, 0, false)).toEqual({ offset: 0, accent: false });
@@ -285,6 +306,42 @@ describe('Live: liberación (nada queda colgado)', () => {
     expect(lit.get('lead')).toBe(false);
     expect(pulses).toContain('lead'); // the release tail
     expect(live.getState().keys.size).toBe(0);
+  });
+
+  it('HOLD deja sonar la nota soltada (tecla y nodo encendidos) hasta apagar HOLD', () => {
+    store.addNode('lead');
+    store.toggleLeadHold();
+    live.keyDown(1, 4);
+    live.keyUp(1);
+    expect(events.filter((e) => e.type === 'off')).toEqual([]);
+    expect(live.getState().keys).toEqual(new Set([4]));
+    expect(lit.get('lead')).toBe(true);
+    // Another key replaces it, then stays.
+    live.keyDown(2, 7);
+    live.keyUp(2);
+    expect(live.getState().keys).toEqual(new Set([7]));
+    expect(events.filter((e) => e.type === 'off')).toEqual([]);
+    // HOLD off: the note goes with its release.
+    store.toggleLeadHold();
+    expect(events.at(-1)).toMatchObject({ node: 'lead', type: 'off' });
+    expect(live.getState().keys.size).toBe(0);
+    expect(lit.get('lead')).toBe(false);
+  });
+
+  it('con HOLD, cortar el cable o parar el transporte también suelta la nota sostenida', () => {
+    store.addNode('lead');
+    store.toggleLeadHold();
+    for (const cut of [() => store.toggleCable('lead'), () => store.togglePlay()]) {
+      if (store.getState().unplugged.includes('lead')) store.toggleCable('lead');
+      if (!store.getState().transport.playing) store.togglePlay();
+      events = [];
+      live.keyDown(1, 0);
+      live.keyUp(1);
+      cut();
+      expect(events.at(-1)).toEqual({ node: 'lead', type: 'panic' });
+      expect(live.getState().keys.size).toBe(0);
+      expect(lit.get('lead')).toBe(false);
+    }
   });
 
   it('cortar el cable, sacar el nodo o parar el transporte suelta las notas del LEAD', () => {
