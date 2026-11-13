@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  generateDrumPattern,
+  gridFromPattern,
+  INITIAL_SEED,
+  MANUAL_HIT,
+} from '../../src/core/drum-patterns';
 import { INSTRUMENT_IDS } from '../../src/core/nodes';
+import { DEFAULT_PATTERNS } from '../../src/core/patterns';
 import { Activity } from '../../src/state/activity';
 import { Store } from '../../src/state/store';
 
@@ -88,9 +95,63 @@ describe('Store', () => {
   });
 
   it('toggles pattern steps', () => {
-    expect(store.getState().patterns.drum[0]?.[1]).toBe(false);
-    store.toggleStep('drum', 0, 1);
-    expect(store.getState().patterns.drum[0]?.[1]).toBe(true);
+    expect(store.getState().patterns.bass[0]?.[1]).toBe(false);
+    store.toggleStep('bass', 0, 1);
+    expect(store.getState().patterns.bass[0]?.[1]).toBe(true);
+  });
+
+  describe('DRUM', () => {
+    it('starts with the prototype pattern, seed and the 909 kit', () => {
+      const { drum } = store.getState();
+      expect(drum.kit).toBe('909samples');
+      expect(drum.seed).toBe(INITIAL_SEED);
+      expect(drum.generation).toBe(0);
+      expect(gridFromPattern(drum.pattern)).toEqual(DEFAULT_PATTERNS.drum);
+    });
+
+    it('toggles a step by hand without changing the generation', () => {
+      store.toggleDrumStep(0, 1);
+      const { drum } = store.getState();
+      expect(drum.pattern[0]?.[1]).toEqual([MANUAL_HIT]);
+      expect(drum.generation).toBe(0);
+      store.toggleDrumStep(0, 1);
+      expect(store.getState().drum.pattern[0]?.[1]).toEqual([]);
+    });
+
+    it('rolls the dice: new seed, new generation, pattern from that seed and CAOS', () => {
+      store.rollDice(1234);
+      const { drum, params } = store.getState();
+      expect(drum.seed).toBe(1234);
+      expect(drum.generation).toBe(1);
+      expect(drum.pattern).toEqual(generateDrumPattern(1234, params.drum.chaos!));
+    });
+
+    it('regenerates from the same seed when CAOS moves', () => {
+      store.rollDice(99);
+      store.setParam('drum', 'chaos', 0.9);
+      const { drum } = store.getState();
+      expect(drum.seed).toBe(99);
+      expect(drum.generation).toBe(2);
+      expect(drum.pattern).toEqual(generateDrumPattern(99, 0.9));
+    });
+
+    it('does not regenerate on other knobs, nor on CAOS of other nodes', () => {
+      store.setParam('drum', 'kickVolume', 0.3);
+      store.setParam('synth', 'chaos', 0.9);
+      expect(store.getState().drum.generation).toBe(0);
+      expect(store.getState().params.drum.kickVolume).toBe(0.3);
+    });
+
+    it('cycles kits once the manifest is known', () => {
+      store.nextKit();
+      expect(store.getState().drum.kit).toBe('909samples');
+      store.setAudioStatus({ ...store.getState().audio, kits: ['909samples', 'glitch', 'trip'] });
+      store.nextKit();
+      expect(store.getState().drum.kit).toBe('glitch');
+      store.nextKit();
+      store.nextKit();
+      expect(store.getState().drum.kit).toBe('909samples');
+    });
   });
 
   it('nudges bpm by 1 within 40–300', () => {

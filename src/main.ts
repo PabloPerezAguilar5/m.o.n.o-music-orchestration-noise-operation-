@@ -1,28 +1,18 @@
-import type { AudioBackend } from './audio/backend';
-import { SilentBackend } from './audio/silent-backend';
-import { pulsesAt } from './core/activity';
-import { pulse, store } from './state';
+import { WebAudioBackend } from './audio/web-audio-backend';
+import { activity, pulse, store } from './state';
+import { linkAudio } from './state/audio-link';
 import './ui/mono-app';
 
-// Stage 1 has no sound: the backend only keeps musical time for the playhead.
-const backend: AudioBackend = new SilentBackend(store.getState().transport.bpm);
+const backend = new WebAudioBackend();
+linkAudio(store, backend, pulse);
 
-const onStep = (step: number): void => {
-  store.setStep(step);
-  for (const { id, ms } of pulsesAt(step, store.getState().patterns)) pulse(id, ms);
-};
+// Browsers only let audio start inside a user gesture. The first touch anywhere
+// (the + button, play, anything) wakes it up; later touches retry if it was blocked.
+const unlock = (): void => backend.unlock();
+window.addEventListener('pointerdown', unlock, { capture: true });
+window.addEventListener('keydown', unlock, { capture: true });
 
-// Keep the backend in step with the transport state.
-let { playing, bpm } = store.getState().transport;
-store.subscribe(() => {
-  const transport = store.getState().transport;
-  if (transport.bpm !== bpm) {
-    bpm = transport.bpm;
-    backend.setBpm(bpm);
-  }
-  if (transport.playing !== playing) {
-    playing = transport.playing;
-    if (playing) backend.start(onStep);
-    else backend.stop();
-  }
-});
+if (import.meta.env.DEV) {
+  // Probe for the browser tests (dev server only): is sound coming out of the master?
+  Object.assign(window, { __mono: { level: () => backend.level(), store, activity } });
+}

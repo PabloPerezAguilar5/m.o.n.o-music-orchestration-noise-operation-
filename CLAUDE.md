@@ -51,3 +51,7 @@ Reutilizar la logica; descartar React y Tone.js.
 - Commits pequenos, uno por etapa. Antes de cada etapa: plan y espera
   mi aprobacion.
 - Probar en navegador real antes de dar algo por terminado.
+
+## Commits
+No agregues lineas "Co-Authored-By" ni "Claude-Session" ni ninguna otra
+atribucion a las herramientas en los mensajes de commit ni en los PR.

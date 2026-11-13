@@ -51,6 +51,18 @@ const PROTOTYPE_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>>
         blackAfter.map((i) => `<div class="bk" style="left:${(i + 1) * 10}%"></div>`).join('');
     }, LEAD_FROM_C),
 };
+/**
+ * States no longer compared, and why. Still walked through, so the rest of the
+ * sequence stays the same.
+ *
+ * 4. panel-drum (stage 2): DRUM became a real instrument. Its knobs are now TONO and
+ *    VOL per row (KCK, SNR, HAT, PRC) plus a PATRÓN section with KIT and DADO, and the
+ *    display shows kit and seed. The prototype has no equivalent to patch in.
+ */
+const EXCLUDED_STATES: Readonly<Record<string, string>> = {
+  'panel-drum': 'DRUM panel redesigned in stage 2',
+};
+
 const NODE_ORDER = ['synth', 'drum', 'bass', 'drone', 'dist', 'lfo', 'lead'] as const;
 const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 720 },
@@ -115,6 +127,7 @@ for (const viewport of VIEWPORTS) {
 
     expect([...app.keys()]).toEqual([...prototype.keys()]);
     for (const [name, expectedShot] of prototype) {
+      if (name in EXCLUDED_STATES) continue;
       const expected = PNG.sync.read(expectedShot);
       const actual = PNG.sync.read(app.get(name)!);
       const diff = new PNG({ width: expected.width, height: expected.height });

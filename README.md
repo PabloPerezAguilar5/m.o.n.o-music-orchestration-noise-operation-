@@ -18,12 +18,12 @@ npm run dev                       # sirve la app en http://localhost:5173
 | `npm run dev` | Servidor de desarrollo. |
 | `npm run build` | Chequeo de tipos y build de produccion en `dist/`. |
 | `npm run typecheck` | Solo chequeo de tipos. |
-| `npm test` | Tests unitarios (Vitest): `src/core` y `src/state`. |
-| `npm run test:e2e` | Tests en navegador (Playwright): interaccion y paridad visual con `reference/prototype/mono.html`. |
+| `npm test` | Tests unitarios (Vitest): nucleo, estado, reloj, grafo de audio, samples. |
+| `npm run test:e2e` | Tests en navegador (Playwright): interaccion, audio real y paridad visual con `reference/prototype/mono.html`. |
 
 ## Estructura
 
-- `src/core`: nucleo musical en TypeScript puro (sin DOM ni Web Audio).
-- `src/audio`: interfaz `AudioBackend` y sus implementaciones. Por ahora solo `SilentBackend`, que mueve el cabezal sin sonar.
-- `src/state`: estado de la aplicacion y sus acciones.
+- `src/core`: nucleo musical en TypeScript puro (sin DOM ni Web Audio): reloj con lookahead (`scheduler.ts`), generadores con semilla, patrones de DRUM, manifiesto de samples.
+- `src/audio`: interfaz `AudioBackend`. `WebAudioBackend` es el motor real (grafo de nodos y cables, master con limitador, DRUM con samples); `SilentBackend` es un doble para tests.
+- `src/state`: estado de la aplicacion, sus acciones y el enlace con el backend de audio (`audio-link.ts`).
 - `src/ui`: componentes Lit. `stage/` es el lienzo, `panel/` el panel del nodo seleccionado.

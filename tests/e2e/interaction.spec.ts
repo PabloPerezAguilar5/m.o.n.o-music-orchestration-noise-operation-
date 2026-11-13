@@ -161,7 +161,7 @@ test.describe('panel', () => {
   test('cada nodo muestra sus perillas y su zona', async ({ page }) => {
     const expected = {
       synth: { knobs: 6, zone: 'mono-step-grid' },
-      drum: { knobs: 4, zone: 'mono-step-grid' },
+      drum: { knobs: 8, zone: 'mono-step-grid' }, // TONO and VOL per row
       bass: { knobs: 4, zone: 'mono-step-grid' },
       drone: { knobs: 4, zone: 'mono-xy-pad' },
       dist: { knobs: 3, zone: 'mono-type-switch' },

@@ -1,10 +1,14 @@
 import { css, html, LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId } from '../../core/nodes';
+import { kitLabel } from '../../core/drum-kits';
+import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
+import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } from '../../core/nodes';
+import type { Pattern } from '../../core/patterns';
+import { formatSeed, randomSeed } from '../../core/random';
 import { pulse, store } from '../../state';
-import { KNOB_LABELS, NODE_CODES, NODE_NAMES, ROW_LABELS, TEXT } from '../labels';
+import { KNOB_LABELS, NODE_CODES, NODE_NAMES, ROW_LABELS, SECTION_LABELS, TEXT } from '../labels';
 import { Selector } from '../store-controller';
-import { reset } from '../styles/shared';
+import { hardwareKey, reset } from '../styles/shared';
 import { NODE_COLORS } from '../theme';
 import './mono-keys';
 import './mono-knob';
@@ -172,6 +176,23 @@ export class MonoPanel extends LitElement {
         min-height: 0;
         display: flex;
       }
+      /* Hardware keys of the PATRÓN section (DRUM), as tall as a knob. */
+      .pk {
+        height: var(--ks);
+        min-width: calc(var(--ks) * 1.2);
+        padding: 0 8px;
+        border-radius: 6px;
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        ${hardwareKey}
+      }
+      .pk:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .pk:active:not(:disabled) {
+        box-shadow: inset 0 3px 0 var(--c);
+      }
     `,
   ];
 
@@ -182,6 +203,10 @@ export class MonoPanel extends LitElement {
   private readonly distType = new Selector(this, store, (s) => s.distType);
   private readonly bpm = new Selector(this, store, (s) => s.transport.bpm);
   private readonly step = new Selector(this, store, (s) => s.transport.step);
+  private readonly drum = new Selector(this, store, (s) => s.drum);
+  private readonly audio = new Selector(this, store, (s) => s.audio);
+  /** On/off view of the DRUM pattern, recomputed only when the pattern changes. */
+  private drumGrid: { pattern: DrumPattern; grid: Pattern } | null = null;
 
   /** Last knob reading, shown on the display until another node is selected. */
   @state() private reading: string | null = null;
@@ -197,14 +222,14 @@ export class MonoPanel extends LitElement {
 
   override render(): TemplateResult {
     const id = this.selected.value;
-    const name = NODE_NAMES[id];
+    const spec = NODE_SPECS[id];
     const values = this.params.value[id];
-    const labels = KNOB_LABELS[id];
+    const sections: readonly ParamSection[] = spec.sections ?? [{ id, params: spec.params }];
 
     return html`<div id="panel">
       <div class="hd">
         <span class="plq">${TEXT.plaque}</span>
-        <div class="lcd" id="lcd">${this.reading ?? `${name} · ${NODE_CODES[id]}`}</div>
+        <div class="lcd" id="lcd">${this.displayText(id)}</div>
         <i class="hz"></i>
         ${id !== 'master'
           ? html`<button id="rm" aria-label=${TEXT.removeNode} @click=${this.onRemove}>✕</button>`
@@ -212,14 +237,17 @@ export class MonoPanel extends LitElement {
       </div>
       <div class="plate">
         <div class="kr">
-          <section>
-            <h6>${name}</h6>
-            <div class="kk">
-              ${NODE_SPECS[id].params.map((param, index) =>
-                this.knob(param, labels[index] ?? param, values[param] ?? 0, false),
-              )}
-            </div>
-          </section>
+          ${sections.map(
+            (section) => html`<section data-section=${section.id}>
+              <h6>${SECTION_LABELS[section.id] ?? NODE_NAMES[id]}</h6>
+              <div class="kk">
+                ${section.params.map((param) =>
+                  this.knob(param, this.knobLabel(id, param), values[param] ?? 0, false),
+                )}
+              </div>
+            </section>`,
+          )}
+          ${id === 'drum' ? this.patternKeys() : nothing}
           <section>
             <h6>${TEXT.macroSection}</h6>
             <div class="kk">
@@ -230,6 +258,64 @@ export class MonoPanel extends LitElement {
         <div class="zn">${this.zone(id)}</div>
       </div>
     </div>`;
+  }
+
+  /**
+   * The display: a knob reading while turning, else an audio problem worth knowing
+   * about, else the node's name and code (DRUM: kit and seed).
+   */
+  private displayText(id: NodeId): string {
+    if (this.reading) return this.reading;
+    const audio = this.audio.value;
+    if (audio.state === 'blocked') return TEXT.audioBlocked;
+    if (audio.state === 'unavailable') return TEXT.audioUnavailable;
+    const name = NODE_NAMES[id];
+    if (id !== 'drum') return `${name} · ${NODE_CODES[id]}`;
+
+    const { kit, seed } = this.drum.value;
+    const missing = audio.missing[kit] ?? audio.missing['*'] ?? [];
+    if (missing.length > 0) {
+      const more = missing.length > 1 ? ` +${missing.length - 1}` : '';
+      return `${name} · ${TEXT.missing} ${missing[0]}${more}`;
+    }
+    return `${name} · ${kitLabel(kit)} · ${TEXT.seed} ${formatSeed(seed)}`;
+  }
+
+  private knobLabel(id: NodeId, param: string): string {
+    return KNOB_LABELS[id][NODE_SPECS[id].params.indexOf(param)] ?? param;
+  }
+
+  /** Knob name for the display; prefixed with its group when the node has several (DRUM: "SNR VOL"). */
+  private readingLabel(id: NodeId, param: string, label: string): string {
+    const section = NODE_SPECS[id].sections?.find((s) => s.params.includes(param));
+    const group = section ? SECTION_LABELS[section.id] : undefined;
+    return group ? `${group} ${label}` : label;
+  }
+
+  /** DRUM: KIT cycles through the kits, DADO rolls a new seed. */
+  private patternKeys(): TemplateResult {
+    return html`<section data-section="pattern">
+      <h6>${TEXT.patternSection}</h6>
+      <div class="kk">
+        <button
+          class="pk"
+          id="kit"
+          aria-label=${TEXT.kitHint}
+          ?disabled=${this.audio.value.kits.length === 0}
+          @click=${this.onKit}
+        >
+          ${TEXT.kit}
+        </button>
+        <button class="pk" id="dice" aria-label=${TEXT.diceHint} @click=${this.onDice}>
+          ${TEXT.dice}
+        </button>
+      </div>
+    </section>`;
+  }
+
+  private drumGridFor(pattern: DrumPattern): Pattern {
+    if (this.drumGrid?.pattern !== pattern) this.drumGrid = { pattern, grid: gridFromPattern(pattern) };
+    return this.drumGrid.grid;
   }
 
   private knob(param: string, label: string, value: number, big: boolean): TemplateResult {
@@ -248,7 +334,11 @@ export class MonoPanel extends LitElement {
       case 'sequencer':
         return html`<mono-step-grid
           .rows=${ROW_LABELS[id]}
-          .pattern=${isSequenced(id) ? this.patterns.value[id] : []}
+          .pattern=${id === 'drum'
+            ? this.drumGridFor(this.drum.value.pattern)
+            : id === 'synth' || id === 'bass'
+              ? this.patterns.value[id]
+              : []}
           .step=${this.step.value}
           @step-toggle=${this.onStepToggle}
         ></mono-step-grid>`;
@@ -281,7 +371,7 @@ export class MonoPanel extends LitElement {
     const id = this.selected.value;
     store.setParam(id, param, value);
     pulse(id, PULSE_MS.knob);
-    this.reading = `${NODE_NAMES[id]} ${label} ${Math.round(value * 127)}`;
+    this.reading = `${NODE_NAMES[id]} ${this.readingLabel(id, param, label)} ${Math.round(value * 127)}`;
   }
 
   private readonly onRemove = (): void => {
@@ -291,8 +381,20 @@ export class MonoPanel extends LitElement {
   private readonly onStepToggle = (event: StepToggleEvent): void => {
     const id = this.selected.value;
     if (!isSequenced(id)) return;
-    store.toggleStep(id, event.detail.row, event.detail.col);
+    const { row, col } = event.detail;
+    if (id === 'drum') store.toggleDrumStep(row, col);
+    else store.toggleStep(id, row, col);
     pulse(id, PULSE_MS.step);
+  };
+
+  private readonly onKit = (): void => {
+    store.nextKit();
+    this.reading = null;
+  };
+
+  private readonly onDice = (): void => {
+    store.rollDice(randomSeed());
+    this.reading = null;
   };
 
   private readonly onPad = (event: XyInputEvent): void => {

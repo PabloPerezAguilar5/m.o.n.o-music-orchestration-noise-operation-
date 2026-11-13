@@ -1,5 +1,7 @@
+import type { AudioStatus } from '../core/audio-scene';
+import type { DrumPattern } from '../core/drum-patterns';
 import type { Point } from '../core/geometry';
-import type { DistType, NodeId, SequencedId } from '../core/nodes';
+import type { DistType, GridPatternId, NodeId } from '../core/nodes';
 import type { Pattern } from '../core/patterns';
 
 export interface TransportState {
@@ -7,6 +9,15 @@ export interface TransportState {
   readonly bpm: number;
   /** Current step 0..15, or -1 while stopped. */
   readonly step: number;
+}
+
+export interface DrumState {
+  /** Kit id (folder in public/samples/drums). */
+  readonly kit: string;
+  readonly seed: number;
+  /** Bumped on every regeneration (dice, CAOS); hand edits keep it. */
+  readonly generation: number;
+  readonly pattern: DrumPattern;
 }
 
 /** Knob values (0..1) by parameter id. */
@@ -19,9 +30,13 @@ export interface AppState {
   /** Kept for every type, so a removed node comes back where it was. */
   readonly positions: Readonly<Record<NodeId, Point>>;
   readonly params: Readonly<Record<NodeId, ParamValues>>;
-  readonly patterns: Readonly<Record<SequencedId, Pattern>>;
+  /** On/off grids of SYNTH and BASS. DRUM's pattern lives in `drum`. */
+  readonly patterns: Readonly<Record<GridPatternId, Pattern>>;
+  readonly drum: DrumState;
   /** DRONE pad position, both axes 0..1. */
   readonly drone: Point;
   readonly distType: DistType;
   readonly transport: TransportState;
+  /** Reported by the audio backend. */
+  readonly audio: AudioStatus;
 }

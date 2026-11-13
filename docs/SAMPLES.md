@@ -193,9 +193,15 @@ ride, toms, conga, rimshot y el clap del 808.
 - Verificado con el servidor de desarrollo (Vite 8.3.8): `manifest.json` y
   los 51 archivos se sirven como `audio/wav` con su tamano exacto.
 
-## Decisiones pendientes para la etapa 2
+## Como los usa la app (etapa 2)
 
-- Como se elige entre las variantes de una fila: alternar en cada golpe,
-  elegir por semilla, o una perilla.
-- Si los archivos sin fila se usan en algun lado (por ejemplo el open hat
-  en pasos acentuados de HAT).
+- Al despertar el audio se carga el manifiesto y el kit elegido; los demas
+  kits se cargan la primera vez que se eligen con KIT.
+- **Variantes:** si una fila tiene varios archivos, la semilla del patron
+  elige uno por paso (`pickVariant` en `src/core/drum-kits.ts`). Un paso
+  suena siempre con la misma variante hasta que se tira el dado.
+- **Si un archivo falla**, esa fila sigue con las demas variantes; si no
+  queda ninguna, usa una voz sintetizada de respaldo. El display del DRUM
+  muestra `FALTA <archivo>`. Sin manifiesto, las cuatro filas usan el
+  respaldo y KIT queda deshabilitado.
+- Los archivos sin fila (`"row": null`) todavia no se usan.

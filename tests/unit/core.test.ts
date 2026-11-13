@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { pulsesAt } from '../../src/core/activity';
 import { clampNodePosition, DEFAULT_POSITIONS, MASTER_POSITION } from '../../src/core/geometry';
-import { INSTRUMENT_IDS, isSequenced, NODE_IDS, NODE_SPECS } from '../../src/core/nodes';
+import { INSTRUMENT_IDS, isSequenced, NODE_IDS, NODE_SPECS, type NodeId } from '../../src/core/nodes';
 import { DEFAULT_PATTERNS, hasHitAt, STEPS, toggleStep } from '../../src/core/patterns';
-import { clampBpm, parseBpm, StepClock, stepDuration } from '../../src/core/transport';
+import { clampBpm, parseBpm, stepDuration } from '../../src/core/transport';
 
 describe('nodes', () => {
   it('has seven instrument types plus master', () => {
@@ -75,62 +75,6 @@ describe('transport', () => {
     expect(stepDuration(120)).toBeCloseTo(0.125);
     expect(stepDuration(60)).toBeCloseTo(0.25);
   });
-
-  it('emits step 0 at start and then one step per duration', () => {
-    const clock = new StepClock(120);
-    clock.start(10);
-    expect(clock.advance(10)).toEqual([0]);
-    expect(clock.advance(10.1)).toEqual([]);
-    expect(clock.advance(10.13)).toEqual([1]);
-    expect(clock.advance(10.38)).toEqual([2, 3]);
-  });
-
-  it('does not drift with irregular polling', () => {
-    const clock = new StepClock(120);
-    clock.start(0);
-    let count = 0;
-    for (let t = 0; t <= 4; t += 0.0171) count += clock.advance(t).length;
-    // 4 s at 120 bpm = 32 steps (step 0 at t=0, the last one lands just before 4 s).
-    expect(count).toBe(32);
-  });
-
-  it('wraps after 16 steps', () => {
-    const clock = new StepClock(120);
-    clock.start(0);
-    const steps: number[] = [];
-    for (let i = 0; i <= 17; i++) steps.push(...clock.advance(i * 0.125 + 0.001));
-    expect(steps.slice(0, 3)).toEqual([0, 1, 2]);
-    expect(steps.slice(15, 18)).toEqual([15, 0, 1]);
-  });
-
-  it('applies a bpm change from the next step', () => {
-    const clock = new StepClock(120);
-    clock.start(0);
-    expect(clock.advance(0)).toEqual([0]); // next due at 0.125
-    clock.setBpm(60);
-    expect(clock.advance(0.13)).toEqual([1]); // next due at 0.125 + 0.25
-    expect(clock.advance(0.3)).toEqual([]);
-    expect(clock.advance(0.38)).toEqual([2]);
-  });
-
-  it('skips the backlog after a long pause but keeps the phase', () => {
-    const clock = new StepClock(120);
-    clock.start(0);
-    clock.advance(0);
-    // 10 s later: 80 steps elapsed. 80 % 16 = 0, so step 0 is the current one.
-    const due = clock.advance(10.001);
-    expect(due.length).toBeLessThanOrEqual(2);
-    expect(due.at(-1)).toBe(0);
-  });
-
-  it('emits nothing while stopped', () => {
-    const clock = new StepClock();
-    expect(clock.advance(5)).toEqual([]);
-    clock.start(0);
-    clock.stop();
-    expect(clock.running).toBe(false);
-    expect(clock.advance(5)).toEqual([]);
-  });
 });
 
 describe('geometry', () => {
@@ -149,12 +93,18 @@ describe('geometry', () => {
 });
 
 describe('activity', () => {
-  const ids = (step: number) => pulsesAt(step, DEFAULT_PATTERNS).map((pulse) => pulse.id);
+  const ids = (step: number, sounding: NodeId[] = []) =>
+    pulsesAt(step, DEFAULT_PATTERNS, sounding).map((pulse) => pulse.id);
 
-  it('lights sequenced nodes only where their pattern has a hit', () => {
-    expect(ids(0)).toEqual(expect.arrayContaining(['synth', 'drum', 'bass']));
+  it('lights the simulated nodes only where their pattern has a hit', () => {
+    expect(ids(0)).toEqual(expect.arrayContaining(['synth', 'bass']));
     expect(ids(1)).toEqual([]);
     expect(ids(3)).toEqual(['bass']);
+  });
+
+  it('lights DRUM only when the audio engine says it sounded', () => {
+    expect(ids(0)).not.toContain('drum');
+    expect(ids(1, ['drum'])).toEqual(['drum']);
   });
 
   it('lights master, distortion and drone on each beat and lfo every other step', () => {

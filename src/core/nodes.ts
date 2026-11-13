@@ -13,22 +13,46 @@ export type SequencedId = (typeof SEQUENCED_IDS)[number];
 export const isSequenced = (id: NodeId): id is SequencedId =>
   (SEQUENCED_IDS as readonly NodeId[]).includes(id);
 
+/** Sequenced nodes whose pattern is still a plain on/off grid (DRUM has hits with velocity). */
+export type GridPatternId = Exclude<SequencedId, 'drum'>;
+
 export const DIST_TYPES = ['soft', 'hard', 'crush'] as const;
 export type DistType = (typeof DIST_TYPES)[number];
 
 /** The performance surface a node shows below its knobs. */
 export type ZoneKind = 'tempo' | 'sequencer' | 'xy' | 'type' | 'wave' | 'keys';
 
-/** Macro knob present on every node. */
+/** Macro knob present on every node. On DRUM it sets how chaotic the generated pattern is. */
 export const MACRO_PARAM = 'chaos';
+
+/** DRUM rows, top to bottom. Also the row names used by the sample manifest. */
+export const DRUM_ROWS = ['kick', 'snare', 'hat', 'perc'] as const;
+export type DrumRow = (typeof DRUM_ROWS)[number];
+
+/** DRUM knob ids for one row. */
+export const drumToneParam = (row: DrumRow): string => `${row}Tone`;
+export const drumVolumeParam = (row: DrumRow): string => `${row}Volume`;
+
+/** A group of knobs under one header in the panel. */
+export interface ParamSection {
+  readonly id: string;
+  readonly params: readonly string[];
+}
 
 export interface NodeSpec {
   /** Continuous parameters (0..1), in panel order. */
   readonly params: readonly string[];
+  /** Knob groups; when absent, all params sit in one group named after the node. */
+  readonly sections?: readonly ParamSection[];
   readonly zone: ZoneKind;
   /** Pattern rows, for sequenced nodes. */
   readonly rows: readonly string[];
 }
+
+const DRUM_SECTIONS: readonly ParamSection[] = DRUM_ROWS.map((row) => ({
+  id: row,
+  params: [drumToneParam(row), drumVolumeParam(row)],
+}));
 
 export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
   master: {
@@ -42,9 +66,10 @@ export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
     rows: ['note', 'octave', 'accent'],
   },
   drum: {
-    params: ['tone', 'decay', 'volume', 'swing'],
+    params: DRUM_SECTIONS.flatMap((section) => section.params),
+    sections: DRUM_SECTIONS,
     zone: 'sequencer',
-    rows: ['kick', 'snare', 'hat', 'perc'],
+    rows: DRUM_ROWS,
   },
   bass: {
     params: ['cutoff', 'resonance', 'decay', 'drive'],

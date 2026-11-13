@@ -28,7 +28,7 @@ export const NODE_CODES: Readonly<Record<NodeId, string>> = {
 export const KNOB_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   master: ['SYNTH', 'DRUM', 'BASS', 'DRONE', 'ESPACIO', 'VOL'],
   synth: ['ONDA', 'CUTOFF', 'RESO', 'ATAQUE', 'RELEASE', 'DETUNE'],
-  drum: ['TONO', 'DECAY', 'VOL', 'SWING'],
+  drum: ['TONO', 'VOL', 'TONO', 'VOL', 'TONO', 'VOL', 'TONO', 'VOL'],
   bass: ['CUTOFF', 'RESO', 'DECAY', 'DRIVE'],
   drone: ['TONO', 'DESAF.', 'FILTRO', 'VOL'],
   dist: ['DRIVE', 'TONO', 'MEZCLA'],
@@ -46,6 +46,14 @@ export const ROW_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   dist: [],
   lfo: [],
   lead: [],
+};
+
+/** Headers of knob groups (NODE_SPECS[id].sections). */
+export const SECTION_LABELS: Readonly<Record<string, string>> = {
+  kick: 'KCK',
+  snare: 'SNR',
+  hat: 'HAT',
+  perc: 'PRC',
 };
 
 export const DIST_TYPE_LABELS: Readonly<Record<DistType, string>> = {
@@ -69,4 +77,13 @@ export const TEXT = {
   editTempo: 'Tempo: tocá para escribirlo',
   tempoInput: 'Tempo en BPM',
   playStop: 'Reproducir o detener',
+  patternSection: 'PATRÓN',
+  kit: 'KIT',
+  kitHint: 'Cambiar kit',
+  dice: 'DADO',
+  diceHint: 'Tirar el dado: patrón nuevo',
+  seed: 'SEMILLA',
+  missing: 'FALTA',
+  audioBlocked: 'AUDIO BLOQUEADO · TOCÁ ▶',
+  audioUnavailable: 'SIN AUDIO EN ESTE NAVEGADOR',
 } as const;

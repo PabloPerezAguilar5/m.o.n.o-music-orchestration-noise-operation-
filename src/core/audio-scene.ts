@@ -1,0 +1,63 @@
+import type { DrumPattern } from './drum-patterns';
+import type { DrumRow, NodeId } from './nodes';
+
+/**
+ * What should sound, derived from the app state. The app hands a new scene to the
+ * audio backend on every change; the backend decides what applies at once and what
+ * waits for the next bar.
+ */
+
+export interface DrumRowScene {
+  /** Knob values, 0..1. */
+  readonly volume: number;
+  readonly tone: number;
+}
+
+export interface DrumScene {
+  readonly kit: string;
+  readonly seed: number;
+  /** Changes whenever the pattern is regenerated (dice, CAOS). Hand edits keep it. */
+  readonly generation: number;
+  readonly pattern: DrumPattern;
+  readonly rows: Readonly<Record<DrumRow, DrumRowScene>>;
+}
+
+export interface AudioScene {
+  readonly bpm: number;
+  /** Nodes on the canvas. Each one except MASTER has a cable to MASTER. */
+  readonly nodes: readonly NodeId[];
+  readonly master: {
+    /** Knob values, 0..1. */
+    readonly volume: number;
+    readonly drumLevel: number;
+  };
+  readonly drum: DrumScene;
+}
+
+export type AudioState = 'idle' | 'starting' | 'running' | 'blocked' | 'unavailable';
+
+export interface AudioStatus {
+  readonly state: AudioState;
+  /** Kit ids from the sample manifest, once loaded. */
+  readonly kits: readonly string[];
+  /** Files that failed to load, by kit id. "manifest.json" when the manifest itself failed. */
+  readonly missing: Readonly<Record<string, readonly string[]>>;
+}
+
+export const INITIAL_AUDIO_STATUS: AudioStatus = { state: 'idle', kits: [], missing: {} };
+
+// Knob to gain mappings ------------------------------------------------------------------------
+
+/** Master VOL knob: linear gain, 1 at full. */
+export const masterGain = (knob: number): number => clamp01(knob);
+
+/** Channel level on the master (e.g. DRUM): unity at half, +6 dB at full. */
+export const channelGain = (knob: number): number => clamp01(knob) * 2;
+
+/** Row volume on DRUM: squared for a natural taper, unity at 0.9. */
+export const rowGain = (knob: number): number => (clamp01(knob) / 0.9) ** 2;
+
+/** Row tone on DRUM: ±12 semitones around the centre, as a playback rate. */
+export const toneRate = (knob: number): number => 2 ** (((clamp01(knob) - 0.5) * 24) / 12);
+
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
