@@ -114,13 +114,13 @@ describe('linkAudio (store ↔ backend)', () => {
 
   it('a cut BASS cable silences it and leaves it dark; plugging it back resumes', () => {
     store.addNode('bass');
-    store.toggleCable('bass');
+    store.toggleCable('bass', 'master');
     expect(backend.scenes.at(-1)!.cables).toEqual([]);
     for (let ms = 0; ms <= 1000; ms += 50) backend.advanceTo(ms / 1000);
     expect(backend.bassEvents).toEqual([]);
     expect(pulses.some((p) => p.id === 'bass')).toBe(false);
-    store.toggleCable('bass');
-    expect(backend.scenes.at(-1)!.cables).toEqual(['bass']);
+    store.toggleCable('bass', 'master');
+    expect(backend.scenes.at(-1)!.cables).toEqual([{ from: 'bass', to: 'master' }]);
     for (let ms = 1050; ms <= 2000; ms += 50) backend.advanceTo(ms / 1000);
     expect(backend.bassEvents.some((event) => event.type === 'on')).toBe(true);
   });
@@ -133,7 +133,7 @@ describe('linkAudio (store ↔ backend)', () => {
     expect(ons.map((event) => event.time)).toEqual([0, 0, 0, 0.25, 0.625, 0.875]);
     expect(pulses.filter((p) => p.id === 'synth')).toHaveLength(4);
 
-    store.toggleCable('synth');
+    store.toggleCable('synth', 'master');
     const before = backend.synthEvents.length;
     for (let ms = 1000; ms <= 2000; ms += 50) backend.advanceTo(ms / 1000);
     expect(backend.synthEvents).toHaveLength(before);

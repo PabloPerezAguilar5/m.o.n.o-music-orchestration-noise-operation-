@@ -107,13 +107,13 @@ describe('activity', () => {
     expect(ids(1)).toEqual([]);
   });
 
-  it('lights master and distortion on each beat and lfo every other step', () => {
-    expect(ids(4)).toEqual(expect.arrayContaining(['master', 'dist', 'lfo']));
+  it('lights MASTER on each beat; DISTORSION and LFO are no longer simulated', () => {
+    expect(ids(4)).toEqual(['master']);
     // LEAD and DRONE are live: they light up while they sound, never on the clock.
-    expect(ids(4)).not.toContain('drone');
-    expect(ids(4)).not.toContain('lead');
-    expect(ids(2)).toContain('lfo');
+    // DISTORSION lights with what goes through it and the LFO glows with its wave (canvas).
+    for (const step of [0, 2, 4, 5]) {
+      for (const id of ['drone', 'lead', 'dist', 'lfo'] as const) expect(ids(step)).not.toContain(id);
+    }
     expect(ids(2)).not.toContain('master');
-    expect(ids(5)).not.toContain('lfo');
   });
 });

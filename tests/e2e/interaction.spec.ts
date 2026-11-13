@@ -53,7 +53,7 @@ test.describe('lienzo', () => {
   test('agregar un nodo lo conecta, lo selecciona y arranca la reproduccion', async ({ page }) => {
     await addNode(page, 'synth');
     await expect(page.locator('#nd-synth')).toHaveClass(/sel/);
-    await expect(page.locator('#cb-synth')).toHaveCount(1);
+    await expect(page.locator('#cb-synth-master')).toHaveCount(1);
     await expect(page.locator('#lcd')).toHaveText('SYNTH · PLUCK · C PENTA MENOR');
     await expect(page.locator('#play')).toHaveClass(/on/);
     await expect(page.locator('#hint')).toHaveCount(0);
@@ -76,8 +76,10 @@ test.describe('lienzo', () => {
   test('con los siete nodos el boton + desaparece y vuelve al quitar uno', async ({ page }) => {
     for (const id of INSTRUMENTS) await addNode(page, id);
     await expect(page.locator('.nd')).toHaveCount(8);
-    await expect(page.locator('.cb')).toHaveCount(7);
-    await expect(page.locator('#cb-lfo')).toHaveAttribute('stroke-dasharray', '6 6');
+    // Every node comes plugged into MASTER but the LFO, which waits to be patched.
+    await expect(page.locator('.cb')).toHaveCount(6);
+    await expect(page.locator('.cb.mod')).toHaveCount(0);
+    await expect(page.locator('.port')).toHaveCount(7); // one output on every node but MASTER
     await expect(page.locator('#add')).toHaveCount(0);
 
     await page.click('#rm');
@@ -94,7 +96,7 @@ test.describe('lienzo', () => {
     const end = await positionOf(node);
     expect(end.x).toBeGreaterThan(start.x + 50);
     expect(end.y).toBeLessThan(start.y - 20);
-    const cable = page.locator('#cb-drum');
+    const cable = page.locator('#cb-drum-master');
     expect(Number(await cable.getAttribute('x1'))).toBeCloseTo(end.x, 3);
     expect(Number(await cable.getAttribute('y1'))).toBeCloseTo(end.y, 3);
     expect(await cable.getAttribute('x2')).toBe('400');
@@ -152,7 +154,7 @@ test.describe('panel', () => {
     await addNode(page, 'bass');
     await page.click('#rm');
     await expect(page.locator('#nd-bass')).toHaveCount(0);
-    await expect(page.locator('#cb-bass')).toHaveCount(0);
+    await expect(page.locator('#cb-bass-master')).toHaveCount(0);
     await expect(page.locator('#lcd')).toHaveText('MASTER · MST-00');
     await expect(page.locator('#hint')).toBeVisible();
     await expect(page.locator('#play')).toHaveClass(/on/);
@@ -164,8 +166,8 @@ test.describe('panel', () => {
       drum: { knobs: 8, zone: 'mono-step-grid' }, // TONO and VOL per row
       bass: { knobs: 4, zone: 'mono-step-grid' },
       drone: { knobs: 5, zone: 'mono-xy-pad' }, // FILTRO ATAQUE RELEASE DESAF. VOL
-      dist: { knobs: 3, zone: 'mono-type-switch' },
-      lfo: { knobs: 3, zone: 'mono-wave' },
+      dist: { knobs: 4, zone: 'mono-type-switch' }, // DRIVE TONO MEZCLA SALIDA
+      lfo: { knobs: 2, zone: 'mono-lfo-scope' }, // VELOCIDAD CANTIDAD
       lead: { knobs: 6, zone: 'mono-keys' }, // ONDA CUTOFF RESO ATAQUE RELEASE GLIDE
     } as const;
     await expect(page.locator('mono-tempo')).toBeVisible();
@@ -518,5 +520,131 @@ test.describe('panel', () => {
     await expect(page.locator('#hold')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.locator('mono-keys .wk.p')).toHaveCount(0);
     await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
+  });
+});
+
+/** Presses on a node's output port and moves the cable out to the centre of `to`, without letting go. */
+async function pullCable(page: Page, from: string, to: string): Promise<void> {
+  const port = (await page.locator(`#port-${from} .pdot`).boundingBox())!;
+  const target = (await page.locator(`#nd-${to} .hit`).boundingBox())!;
+  await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
+}
+
+/** Drags a cable from a node's output port and drops it on another node. */
+async function patch(page: Page, from: string, to: string): Promise<void> {
+  await pullCable(page, from, to);
+  await page.mouse.up();
+}
+
+test.describe('cables', () => {
+  test('arrastrar un cable de BASS a DISTORSION la inserta; los puertos validos se encienden', async ({ page }) => {
+    await addNode(page, 'bass');
+    await addNode(page, 'drum');
+    await addNode(page, 'dist');
+    await expect(page.locator('#cb-bass-master')).toHaveCount(1);
+
+    // While the cable is in the air, the nodes it can land on light their input.
+    await pullCable(page, 'bass', 'dist');
+    await expect(page.locator('#wire')).toHaveCount(1);
+    await expect(page.locator('#nd-dist')).toHaveClass(/\btg\b/);
+    await expect(page.locator('#nd-master')).toHaveClass(/\btg\b/);
+    await expect(page.locator('#nd-drum')).not.toHaveClass(/\btg\b/); // DRUM has no input
+    await expect(page.locator('#nd-bass')).not.toHaveClass(/\btg\b/);
+    await expect(page.locator('.pin')).toHaveCount(2);
+    await page.mouse.up();
+
+    await expect(page.locator('#wire')).toHaveCount(0);
+    await expect(page.locator('#cb-bass-dist')).toHaveCount(1);
+    await expect(page.locator('#cb-bass-master')).toHaveCount(0); // inserted: no direct cable
+    await expect(page.locator('#lcd')).toHaveText('BASS → DISTORSIÓN');
+
+    // Into MASTER again: a parallel send, the effect stays.
+    await patch(page, 'bass', 'master');
+    await expect(page.locator('#cb-bass-master')).toHaveCount(1);
+    await expect(page.locator('#cb-bass-dist')).toHaveCount(1);
+
+    // Dragging the node's body still moves it, and its cables follow.
+    const node = page.locator('#nd-bass');
+    const start = await positionOf(node);
+    await dragBy(page, node.locator('path'), -80, -40);
+    const end = await positionOf(node);
+    expect(end.x).toBeLessThan(start.x - 30);
+    expect(Number(await page.locator('#cb-bass-dist').getAttribute('x1'))).toBeCloseTo(end.x, 3);
+  });
+
+  test('sacar la DISTORSION devuelve al MASTER lo que pasaba por ella', async ({ page }) => {
+    await addNode(page, 'bass');
+    await addNode(page, 'dist');
+    await patch(page, 'bass', 'dist');
+    await expect(page.locator('#cb-bass-master')).toHaveCount(0);
+    await page.click('#nd-dist');
+    await page.click('#rm');
+    await expect(page.locator('#cb-bass-dist')).toHaveCount(0);
+    await expect(page.locator('#cb-bass-master')).toHaveCount(1);
+  });
+
+  test('el LFO modula con un cable punteado y un aro en la perilla; nunca al MASTER', async ({ page }) => {
+    await addNode(page, 'bass');
+    await addNode(page, 'lfo');
+    await expect(page.locator('[id^="cb-lfo"]')).toHaveCount(0); // the LFO comes unpatched
+
+    await pullCable(page, 'lfo', 'master');
+    await expect(page.locator('#nd-bass')).toHaveClass(/\btg\b/);
+    await expect(page.locator('#nd-master')).not.toHaveClass(/\btg\b/);
+    await page.mouse.up();
+    await expect(page.locator('#lcd')).toHaveText('El LFO no modula el MASTER');
+
+    await patch(page, 'lfo', 'bass');
+    await expect(page.locator('#cb-lfo-bass')).toHaveClass(/\bmod\b/);
+    await expect(page.locator('#lcd')).toHaveText('LFO → BASS CUTOFF');
+
+    // The CUTOFF knob shows where the LFO has it; the others are untouched.
+    await page.click('#nd-bass');
+    await expect(page.locator('mono-knob[data-param="cutoff"] .orbit')).toHaveCount(1);
+    await expect(page.locator('mono-knob .orbit')).toHaveCount(1);
+    // A cut modulation cable stops it.
+    await page.locator('#cbh-lfo-bass').dispatchEvent('click');
+    await expect(page.locator('#cb-lfo-bass')).toHaveClass(/\boff\b/);
+    await expect(page.locator('mono-knob .orbit')).toHaveCount(0);
+  });
+
+  test('una conexion que crearia un bucle se rechaza y el display dice por que', async ({ page }) => {
+    await addNode(page, 'dist');
+    await addNode(page, 'drum');
+    await addNode(page, 'bass');
+    // DISTORSION into itself: its sound would come back to it.
+    const port = (await page.locator('#port-dist .pdot').boundingBox())!;
+    const body = (await page.locator('#nd-dist .hit').boundingBox())!;
+    await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(port.x - 120, port.y + 60, { steps: 5 });
+    await expect(page.locator('#nd-dist')).not.toHaveClass(/\btg\b/);
+    await page.mouse.move(body.x + body.width / 2, body.y + body.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.locator('#lcd')).toHaveText('Esa conexión crearía un bucle');
+    await expect(page.locator('#cb-dist-dist')).toHaveCount(0);
+
+    // BASS into DRUM: a generator has no input.
+    await patch(page, 'bass', 'drum');
+    await expect(page.locator('#lcd')).toHaveText('DRUM no tiene entrada');
+    await expect(page.locator('#cb-bass-drum')).toHaveCount(0);
+  });
+
+  test('el panel del LFO: formas, SYNC con divisiones del tempo y la onda en vivo', async ({ page }) => {
+    await addNode(page, 'lfo');
+    await expect(page.locator('[data-shape]')).toHaveCount(4);
+    await expect(page.locator('[data-shape="sine"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.click('[data-shape="random"]');
+    await expect(page.locator('[data-shape="random"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#lcd')).toHaveText(/^LFO · RANDOM · [\d.]+ Hz$/);
+    await page.click('#sync');
+    await expect(page.locator('#sync')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#lcd')).toHaveText(/^LFO · RANDOM · 1\/(1|2|4|8|16)$/);
+    // VELOCIDAD all the way up: the fastest division.
+    await dragBy(page, page.locator('mono-knob[data-param="rate"] .kn'), 0, -400);
+    await expect(page.locator('#lcd')).toHaveText('LFO VELOCIDAD 1/16');
+    await expect(page.locator('mono-lfo-scope canvas')).toBeVisible();
   });
 });

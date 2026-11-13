@@ -40,8 +40,22 @@ const LEAD_FROM_C = {
   blackAfter: [0, 1, 3, 4, 5, 7, 8],
 };
 
+/**
+ * 12. Routing (stage 6): the LFO comes unpatched (its modulation cable never goes to
+ *     MASTER; it is dragged to the nodes it moves), so the prototype's dashed LFO cable
+ *     is taken out before the screenshot of the canvas with every node. Affects
+ *     panel-master-all-nodes.
+ */
+const hidePrototypeLfoCable = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const cable = document.getElementById('cb-lfo');
+    if (!cable) throw new Error('prototype LFO cable not found');
+    cable.remove();
+  });
+
 /** Applied to the prototype right before the screenshot of the named state. */
 const PROTOTYPE_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  'panel-master-all-nodes': hidePrototypeLfoCable,
   'panel-lead': (page) =>
     page.evaluate(({ white, blackAfter }) => {
       const keys = document.querySelector('.keys');
@@ -83,6 +97,22 @@ const hideLeadLevel = (page: Page): Promise<void> =>
     root.append(style);
   });
 
+/**
+ * 13. Routing (stage 6): every node but MASTER has an output port (a small circle on its
+ *     right edge) to drag cables from, and a cable takes the colour of the node it comes
+ *     from, faint at rest (the prototype's are grey). The ports are hidden and the cables
+ *     drawn grey in the app's screenshots; their positions and the rest of the canvas are
+ *     still compared. Affects panel-master-all-nodes.
+ */
+const hideRouting = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const root = document.querySelector('mono-app')?.shadowRoot?.querySelector('mono-stage')?.shadowRoot;
+    if (!root?.querySelector('.port')) throw new Error('output ports not found');
+    const style = document.createElement('style');
+    style.textContent = '.port { display: none; } .cb { stroke: #2e2e45 !important; }';
+    root.append(style);
+  });
+
 /** Applied to the app right before the screenshot of the named state. */
 const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   initial: async (page) => {
@@ -92,6 +122,7 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   'panel-master-all-nodes': async (page) => {
     await hideMetronome(page);
     await hideLeadLevel(page);
+    await hideRouting(page);
   },
 };
 
@@ -159,7 +190,20 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  *     The DRONE node no longer flashes on each beat: it is lit while its layers sound.
  *     In the walk nothing is touched on the pad, so every other state is unchanged.
  */
+/*
+ * 14. panel-dist (stage 6): DISTORSIÓN became a real effect. A SALIDA knob joined DRIVE,
+ *     TONO and MEZCLA, and the display shows its type (was its code). The node no longer
+ *     flashes on each beat: it lights while something lit plays into it. No prototype
+ *     equivalent.
+ * 15. panel-lfo (stage 6): the LFO became real. FORMA went from a knob to four keys (SENO,
+ *     TRIÁNGULO, CUADRADA, RANDOM), a SYNC key joined VELOCIDAD and CANTIDAD, the display
+ *     shows shape and speed, and the decorative scrolling sine became a canvas drawing the
+ *     running wave. The node no longer flashes every other step: it glows with its wave
+ *     while it moves something. No prototype equivalent.
+ */
 const EXCLUDED_STATES: Readonly<Record<string, string>> = {
+  'panel-dist': 'DISTORSION panel redesigned in stage 6',
+  'panel-lfo': 'LFO panel redesigned in stage 6',
   'panel-drum': 'DRUM panel redesigned in stage 2 and after',
   'panel-bass': 'BASS panel redesigned in stage 3',
   'panel-synth': 'SYNTH panel redesigned in stage 4',

@@ -5,7 +5,10 @@ import type { ScaleId } from './scales';
 import type { SynthPattern } from './synth-patterns';
 import type { SynthPreset } from './synth-voices';
 import type { DrumPattern } from './drum-patterns';
+import type { DistSettings } from './dist';
+import type { LfoShape } from './lfo';
 import type { DrumRow, NodeId } from './nodes';
+import type { Link } from './routing';
 
 /**
  * What should sound, derived from the app state. The app hands a new scene to the
@@ -79,12 +82,28 @@ export interface DroneScene extends DroneKnobs {
   readonly preset: DronePreset;
 }
 
+/** DISTORSIÓN: its type and knobs (SALIDA is its own level). */
+export type DistScene = DistSettings;
+
+/** LFO: knobs (0..1) and settings; the backend turns VELOCIDAD into a speed with the tempo. */
+export interface LfoScene {
+  readonly shape: LfoShape;
+  readonly sync: boolean;
+  readonly rate: number;
+  readonly depth: number;
+  readonly chaos: number;
+}
+
 export interface AudioScene {
   readonly bpm: number;
   /** Nodes on the canvas. */
   readonly nodes: readonly NodeId[];
-  /** Nodes whose cable to MASTER is plugged in (cut cables are left out). */
-  readonly cables: readonly NodeId[];
+  /**
+   * Cables carrying something: plugged in (cut ones are left out), both ends on the
+   * canvas. Sound cables, and the LFO's modulation cables.
+   */
+  readonly cables: readonly Link[];
+  /** Levels of each instrument, at its output (before its cables), and MASTER's VOL. */
   readonly master: {
     /** Knob values, 0..1. */
     readonly volume: number;
@@ -99,6 +118,8 @@ export interface AudioScene {
   readonly synth: SynthScene;
   readonly lead: LeadScene;
   readonly drone: DroneScene;
+  readonly dist: DistScene;
+  readonly lfo: LfoScene;
   readonly metronome: MetronomeScene;
 }
 

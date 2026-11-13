@@ -3,6 +3,8 @@ import type { BassMode, BassPattern } from '../core/bass-patterns';
 import type { DrumPattern } from '../core/drum-patterns';
 import type { DroneMode, DronePreset } from '../core/drone';
 import type { Point } from '../core/geometry';
+import type { LfoShape } from '../core/lfo';
+import type { Cable } from '../core/routing';
 import type { DistType, NodeId } from '../core/nodes';
 import type { ScaleId } from '../core/scales';
 import type { SynthMode, SynthPattern } from '../core/synth-patterns';
@@ -79,6 +81,14 @@ export interface DroneState {
   readonly mode: DroneMode;
 }
 
+/** LFO settings that are not knobs. */
+export interface LfoState {
+  /** SENO, TRIÁNGULO, CUADRADA, RANDOM (sample and hold). */
+  readonly shape: LfoShape;
+  /** SYNC: VELOCIDAD picks a division of the master's tempo instead of a speed in Hz. */
+  readonly sync: boolean;
+}
+
 /** CLICK on the MASTER panel. */
 export interface MetronomeState {
   readonly on: boolean;
@@ -102,9 +112,13 @@ export interface AppState {
   readonly synth: SynthState;
   readonly lead: LeadState;
   readonly drone: DroneState;
-  /** Nodes whose cable to MASTER is cut (they stay on the canvas, silent). */
-  readonly unplugged: readonly NodeId[];
+  /**
+   * The patch: every cable, from a node's output to another node's input (cut ones too,
+   * drawn faint until tapped back in). Plain data, to be saved and shared.
+   */
+  readonly cables: readonly Cable[];
   readonly distType: DistType;
+  readonly lfo: LfoState;
   readonly transport: TransportState;
   readonly metronome: MetronomeState;
   /** Reported by the audio backend. */

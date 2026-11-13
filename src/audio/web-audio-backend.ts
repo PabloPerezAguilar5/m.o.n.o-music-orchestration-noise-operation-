@@ -7,20 +7,26 @@ import {
 } from '../core/audio-scene';
 import { pickVariant } from '../core/drum-kits';
 import type { DrumPattern } from '../core/drum-patterns';
+import { lfoRate } from '../core/lfo';
 import type { LiveEvent } from '../core/live-events';
 import { clickAt } from '../core/metronome';
 import { DRUM_ROWS, type NodeId } from '../core/nodes';
+import type { Link } from '../core/routing';
 import { LookaheadScheduler, type ScheduledStep } from '../core/scheduler';
 import { startTicker, type AudioTicker } from './audio-clock';
-import type { AudioBackend, StatusListener, StepEvent, StepListener } from './backend';
+import type { AudioBackend, LfoTraceListener, StatusListener, StepEvent, StepListener } from './backend';
 import { bassTrackSpec } from './bass/bass-track';
+import { DistModule, loadDistProcessor } from './distortion/dist-module';
 import { DroneModule } from './drone/drone-module';
 import { DrumModule, type LoadedKit } from './drum-module';
 import { AudioGraph, type AudioModule } from './graph';
 import { LeadTrack } from './lead/lead-track';
+import type { LfoSettings } from './lfo/lfo-dsp';
+import { LfoModule, loadLfoProcessor } from './lfo/lfo-module';
 import { MasterBus, type MixMeter } from './master';
 import { MetronomeVoice } from './metronome';
 import { MANIFEST_FILE, SampleLibrary } from './sample-library';
+import { Strip } from './strip';
 import { synthTrackSpec } from './synth/synth-track';
 import { loadVoiceProcessor } from './voice/voice-module';
 import { VoiceTrack, type TrackScene } from './voice/voice-track';
@@ -39,6 +45,34 @@ const MASTER = 'master';
 const DRUM: NodeId = 'drum';
 const LEAD: NodeId = 'lead';
 const DRONE: NodeId = 'drone';
+const DIST: NodeId = 'dist';
+const LFO: NodeId = 'lfo';
+
+type LevelKnob = 'drumLevel' | 'bassLevel' | 'synthLevel' | 'leadLevel' | 'droneLevel';
+
+/** The level knob on MASTER of each instrument, applied at the instrument's output. */
+const LEVEL_KNOBS: Readonly<Partial<Record<NodeId, LevelKnob>>> = {
+  drum: 'drumLevel',
+  bass: 'bassLevel',
+  synth: 'synthLevel',
+  lead: 'leadLevel',
+  drone: 'droneLevel',
+};
+
+/** Nodes that make sound: each is released when its sound stops reaching MASTER. */
+const INSTRUMENTS: readonly NodeId[] = [DRUM, 'bass', 'synth', LEAD, DRONE];
+
+/** Played by hand: they join, leave and have their own cables changed at once. */
+const isLive = (id: NodeId): boolean => id === LEAD || id === DRONE;
+const sameLink = (a: { from: string; to: string }, b: { from: string; to: string }): boolean =>
+  a.from === b.from && a.to === b.to;
+
+const lfoSettings = (scene: AudioScene): LfoSettings => ({
+  shape: scene.lfo.shape,
+  sync: scene.lfo.sync,
+  chaos: scene.lfo.chaos,
+  rate: lfoRate(scene.lfo.rate, scene.lfo.sync, scene.bpm),
+});
 
 /** What DRUM is playing now; it catches up with the latest scene as allowed. */
 interface Applied {
@@ -48,8 +82,8 @@ interface Applied {
   pattern: DrumPattern;
 }
 
-/** Where the voice processor (BASS, SYNTH and LEAD) stands in this context. */
-type VoiceLoad = 'loading' | 'ready' | 'failed';
+/** Where a worklet processor (voices, DISTORSIÓN, LFO) stands in this context. */
+type WorkletLoad = 'loading' | 'ready' | 'failed';
 
 interface PendingVisual {
   readonly time: number;
@@ -63,12 +97,17 @@ interface PendingVisual {
  * an AudioWorklet. Each step is scheduled with its exact time, and its visual event is
  * delivered when that time is heard (output latency included).
  *
- * Applies at once: tempo, levels, DRUM row volume and tone, BASS and SYNTH knobs, keys
- * and presets, hand edits of a pattern, and everything played live (LEAD notes, DRONE
- * layers, their knobs). Waits for the next bar while playing: adding or
- * removing nodes, cutting or plugging cables, changing kit, a regenerated pattern,
- * tonic and scale. LEAD and DRONE are the exception: played by hand, they join, leave
- * and have their cable cut at once (applyLive).
+ * Applies at once: tempo, levels, every knob (DISTORSIÓN and LFO included), keys and
+ * presets, hand edits of a pattern, and everything played live (LEAD notes, DRONE
+ * layers). Waits for the next bar while playing: adding or removing nodes, making or
+ * cutting cables (sound and modulation), changing kit, a regenerated pattern, tonic and
+ * scale. LEAD and DRONE are the exception: played by hand, they join, leave and have
+ * their own cables made or cut at once (applyLive).
+ *
+ * Routing: every cable of the scene is a real connection in the AudioGraph, from a
+ * node's output (after its level) to another node's input; an input sums its cables.
+ * An instrument whose sound stops reaching MASTER (its cable cut, the effect it went
+ * through unplugged) lets go of what it was playing, so nothing comes back later.
  */
 export class WebAudioBackend implements AudioBackend {
   private context: AudioContext | null = null;
@@ -85,7 +124,16 @@ export class WebAudioBackend implements AudioBackend {
   private readonly lead = new LeadTrack();
   /** DRONE, live on native Web Audio nodes. */
   private drone: DroneModule | null = null;
-  private voiceLoad: VoiceLoad = 'loading';
+  private dist: DistModule | null = null;
+  private lfo: LfoModule | null = null;
+  /** Each instrument's level, at its output. */
+  private readonly strips = new Map<NodeId, Strip>();
+  /** Instruments whose sound reaches MASTER in the graph as it is now. */
+  private heard = new Set<NodeId>();
+  private voiceLoad: WorkletLoad = 'loading';
+  private distLoad: WorkletLoad = 'loading';
+  private lfoLoad: WorkletLoad = 'loading';
+  private readonly lfoListeners = new Set<LfoTraceListener>();
   private metronome: MetronomeVoice | null = null;
   /** Kit waiting to be heard (its samples may still be loading). */
   private pendingAudition: string | null = null;
@@ -180,6 +228,11 @@ export class WebAudioBackend implements AudioBackend {
     return () => this.statusListeners.delete(listener);
   }
 
+  onLfoTrace(listener: LfoTraceListener): () => void {
+    this.lfoListeners.add(listener);
+    return () => this.lfoListeners.delete(listener);
+  }
+
   /** RMS of the master output (0 = silence). For meters and tests. */
   level(): number {
     return this.master?.level() ?? 0;
@@ -193,6 +246,11 @@ export class WebAudioBackend implements AudioBackend {
   /** Peak of the metronome output, which bypasses the master. For tests. */
   clickLevel(): number {
     return this.metronome?.level() ?? 0;
+  }
+
+  /** The cables in the audio graph right now, as "from->to". For tests. */
+  cables(): string[] {
+    return this.graph?.cableIds() ?? [];
   }
 
   // Start-up -------------------------------------------------------------------------------------
@@ -212,14 +270,37 @@ export class WebAudioBackend implements AudioBackend {
       (manifest) => this.setStatus({ kits: manifest.kits.map((kit) => kit.id) }),
       () => this.reportMissing('*', [MANIFEST_FILE]),
     );
+    const loaded = (): void => {
+      if (this.initialized && this.scene) this.apply(this.scene);
+    };
     void loadVoiceProcessor(context).then(
       () => {
         this.voiceLoad = 'ready';
-        if (this.initialized && this.scene) this.apply(this.scene);
+        loaded();
       },
       (error: unknown) => {
         this.voiceLoad = 'failed';
         console.warn('M.O.N.O.: no se pudo cargar la voz de BASS, SYNTH y LEAD; quedan en silencio.', error);
+      },
+    );
+    void loadDistProcessor(context).then(
+      () => {
+        this.distLoad = 'ready';
+        loaded();
+      },
+      (error: unknown) => {
+        this.distLoad = 'failed';
+        console.warn('M.O.N.O.: no se pudo cargar la DISTORSIÓN; queda en silencio.', error);
+      },
+    );
+    void loadLfoProcessor(context).then(
+      () => {
+        this.lfoLoad = 'ready';
+        loaded();
+      },
+      (error: unknown) => {
+        this.lfoLoad = 'failed';
+        console.warn('M.O.N.O.: no se pudo cargar el LFO; no mueve nada.', error);
       },
     );
 
@@ -261,16 +342,15 @@ export class WebAudioBackend implements AudioBackend {
     // Continuous: from now.
     this.scheduler.setBpm(scene.bpm);
     this.master!.setVolume(masterGain(scene.master.volume), now);
-    this.master!.setChannelLevel(DRUM, channelGain(scene.master.drumLevel), now);
-    this.master!.setChannelLevel('bass', channelGain(scene.master.bassLevel), now);
-    this.master!.setChannelLevel('synth', channelGain(scene.master.synthLevel), now);
-    this.master!.setChannelLevel(LEAD, channelGain(scene.master.leadLevel), now);
-    this.master!.setChannelLevel(DRONE, channelGain(scene.master.droneLevel), now);
+    for (const [id, strip] of this.strips) strip.setLevel(this.levelOf(scene, id), now);
     this.metronome!.setVolume(scene.metronome.volume, now);
     for (const row of DRUM_ROWS) this.drum?.setRow(row, scene.drum.rows[row], now);
     for (const track of this.tracks) track.update(scene);
     this.lead.update(scene);
     this.drone?.setScene(scene, now);
+    this.dist?.setSettings(scene.dist);
+    this.lfo?.setSettings(lfoSettings(scene));
+    this.lfo?.setDepth(scene.lfo.depth, now);
 
     if (!this.applied) {
       this.applied = { kit: null, seed: scene.drum.seed, generation: scene.drum.generation, pattern: scene.drum.pattern };
@@ -283,15 +363,50 @@ export class WebAudioBackend implements AudioBackend {
     if (this.structuralChange(scene)) this.queueStructural();
   }
 
-  /** Whether a node of the scene should be in the graph (voice instruments need their processor). */
+  /** Whether a node of the scene should be in the graph (worklet nodes need their processor). */
   private wants(scene: AudioScene, id: NodeId): boolean {
     if (!scene.nodes.includes(id)) return false;
+    if (id === DIST) return this.distLoad === 'ready';
+    if (id === LFO) return this.lfoLoad === 'ready';
     return id === DRUM || id === DRONE || this.voiceLoad === 'ready';
   }
 
-  /** The nodes on the clock, whose structural changes wait for the bar. */
-  private sequencedIds(): NodeId[] {
-    return [DRUM, ...this.tracks.map((track) => track.id)];
+  /** Nodes whose joining and leaving wait for the bar. */
+  private barIds(): NodeId[] {
+    return [DRUM, ...this.tracks.map((track) => track.id), DIST, LFO];
+  }
+
+  /** The level knob of an instrument, as a gain (1 for nodes without one). */
+  private levelOf(scene: AudioScene, id: NodeId): number {
+    const knob = LEVEL_KNOBS[id];
+    return knob ? channelGain(scene.master[knob]) : 1;
+  }
+
+  /** Adds a module to the graph; an instrument with a level knob goes in behind its level. */
+  private addModule(id: NodeId, module: AudioModule, scene: AudioScene): void {
+    if (LEVEL_KNOBS[id]) {
+      const strip = new Strip(this.context!, module, this.levelOf(scene, id));
+      this.strips.set(id, strip);
+      this.graph!.add(id, strip);
+    } else {
+      this.graph!.add(id, module);
+    }
+  }
+
+  private removeModule(id: NodeId, time: number): void {
+    this.strips.delete(id);
+    this.graph!.remove(id, time);
+  }
+
+  /** The scene's cables that `pick` covers and whose two ends are in the graph. */
+  private wantedLinks(scene: AudioScene, pick: (link: Link) => boolean): Link[] {
+    const graph = this.graph!;
+    return scene.cables.filter((link) => pick(link) && graph.has(link.from) && graph.has(link.to));
+  }
+
+  /** The graph's cables that `pick` covers. */
+  private currentLinks(pick: (link: Link) => boolean): Link[] {
+    return (this.graph!.links() as Link[]).filter(pick);
   }
 
   private structuralChange(scene: AudioScene): boolean {
@@ -300,9 +415,12 @@ export class WebAudioBackend implements AudioBackend {
     const kit = scene.drum.kit;
     // A new kit counts once it has loaded, or when it still has to be requested.
     const kitChange = kit !== applied.kit && (this.kits.has(kit) || !this.kitRequests.has(kit));
-    const ids = this.sequencedIds();
-    const nodeChange = ids.some((id) => this.wants(scene, id) !== graph.has(id));
-    const cableChange = ids.some((id) => graph.has(id) && scene.cables.includes(id) !== graph.isConnected(id, MASTER));
+    const nodeChange = this.barIds().some((id) => this.wants(scene, id) !== graph.has(id));
+    const onBar = (link: Link): boolean => !isLive(link.from);
+    const wanted = this.wantedLinks(scene, onBar);
+    const current = this.currentLinks(onBar);
+    const cableChange =
+      wanted.length !== current.length || wanted.some((link) => !current.some((other) => sameLink(link, other)));
     return (
       nodeChange ||
       cableChange ||
@@ -348,33 +466,39 @@ export class WebAudioBackend implements AudioBackend {
     for (const track of this.tracks) track.commit(scene);
 
     // Nodes.
-    const wantDrum = this.wants(scene, DRUM);
-    if (wantDrum && !graph.has(DRUM)) {
-      const drum = new DrumModule(context);
-      for (const row of DRUM_ROWS) drum.setRow(row, scene.drum.rows[row], time);
-      drum.setKit(applied.kit ? (this.kits.get(applied.kit) ?? null) : null);
-      graph.add(DRUM, drum);
-      this.drum = drum;
-    } else if (!wantDrum && graph.has(DRUM)) {
-      graph.remove(DRUM, time);
-      this.drum = null;
-    }
+    this.place(
+      DRUM,
+      scene,
+      time,
+      () => {
+        const drum = new DrumModule(context);
+        for (const row of DRUM_ROWS) drum.setRow(row, scene.drum.rows[row], time);
+        drum.setKit(applied.kit ? (this.kits.get(applied.kit) ?? null) : null);
+        return (this.drum = drum);
+      },
+      () => (this.drum = null),
+    );
     for (const track of this.tracks) {
-      const want = this.wants(scene, track.id);
-      if (want && !graph.has(track.id)) {
-        graph.add(track.id, track.create(context, scene));
-      } else if (!want && graph.has(track.id)) {
-        track.drop(time);
-        graph.remove(track.id, time);
-      }
+      this.place(track.id, scene, time, () => track.create(context, scene), () => track.drop(time));
     }
+    this.place(DIST, scene, time, () => (this.dist = new DistModule(context, scene.dist)), () => (this.dist = null));
+    this.place(
+      LFO,
+      scene,
+      time,
+      () =>
+        (this.lfo = new LfoModule(context, lfoSettings(scene), scene.lfo.depth, (values) => {
+          for (const listener of this.lfoListeners) listener(values);
+        })),
+      () => (this.lfo = null),
+    );
 
-    // Cables: each live connection is made or cut here, with a short fade.
-    for (const id of this.sequencedIds()) this.plug(id, scene, time);
+    // Cables: each connection is made or cut here, with a short fade.
+    this.patch(scene, time, () => true);
   }
 
   /**
-   * LEAD and DRONE join, leave, and have their cable cut or plugged at once, playing or
+   * LEAD and DRONE join, leave, and have their cables made or cut at once, playing or
    * not: they are played by hand and have no bar to line up with, and waiting for one
    * would leave the keys and the pad dead for up to a bar.
    */
@@ -391,25 +515,39 @@ export class WebAudioBackend implements AudioBackend {
         this.drone = null;
       },
     );
-    this.plug(LEAD, scene, time);
-    this.plug(DRONE, scene, time);
+    this.patch(scene, time, (link) => isLive(link.from));
   }
 
-  /** Makes or cuts a node's cable to MASTER as the scene wants. A cut releases what was sounding. */
-  private plug(id: NodeId, scene: AudioScene, time: number): void {
+  /**
+   * Makes and cuts the graph's cables that `pick` covers until they match the scene, each
+   * with a short fade. Then any instrument whose sound no longer reaches MASTER lets go.
+   */
+  private patch(scene: AudioScene, time: number, pick: (link: Link) => boolean): void {
     const graph = this.graph!;
-    if (!graph.has(id)) return;
-    const want = scene.cables.includes(id);
-    if (want && !graph.isConnected(id, MASTER)) {
-      graph.connect(id, MASTER, time);
-    } else if (!want && graph.isConnected(id, MASTER)) {
-      graph.disconnect(id, MASTER, time);
-      // Nothing waits behind a cut cable to sound when it is plugged back.
+    const wanted = this.wantedLinks(scene, pick);
+    for (const link of this.currentLinks(pick)) {
+      if (!wanted.some((other) => sameLink(other, link))) graph.disconnect(link.from, link.to, time);
+    }
+    for (const link of wanted) graph.connect(link.from, link.to, time);
+    this.hear(time);
+  }
+
+  /**
+   * Which instruments reach MASTER now. One that stopped (its cable cut, the effect it
+   * went through unplugged or removed) is released, so nothing waits behind the cut to
+   * sound when it is plugged back: BASS and SYNTH drop their scheduled notes; LEAD and
+   * DRONE, unheard now, go silent at once.
+   */
+  private hear(time: number): void {
+    const graph = this.graph!;
+    const now = new Set(INSTRUMENTS.filter((id) => graph.has(id) && graph.reaches(id, MASTER, LFO)));
+    for (const id of this.heard) {
+      if (now.has(id)) continue;
       this.tracks.find((track) => track.id === id)?.flush(time);
-      // LEAD and DRONE, unheard now, go silent at once: nothing is left to come back.
       if (id === LEAD) this.lead.flush(time, true);
       if (id === DRONE) this.drone?.clear(time);
     }
+    this.heard = now;
   }
 
   /** Adds a node's module to the graph or takes it out, as the scene wants. */
@@ -417,10 +555,10 @@ export class WebAudioBackend implements AudioBackend {
     const graph = this.graph!;
     const want = this.wants(scene, id);
     if (want && !graph.has(id)) {
-      graph.add(id, create());
+      this.addModule(id, create(), scene);
     } else if (!want && graph.has(id)) {
       drop();
-      graph.remove(id, time);
+      this.removeModule(id, time);
     }
   }
 
@@ -471,11 +609,13 @@ export class WebAudioBackend implements AudioBackend {
     // The metronome rides the same clock as every node, whatever is on the canvas.
     const click = this.scene?.metronome.on ? clickAt(step) : null;
     if (click) this.metronome?.click(click, time);
+    // SYNC: the LFO starts its cycle on every bar.
+    if (step === 0) this.lfo?.bar(time);
 
     const sounding: NodeId[] = [];
     const drum = this.drum;
     const applied = this.applied;
-    if (drum && applied && this.graph?.isConnected(DRUM, MASTER)) {
+    if (drum && applied && this.heard.has(DRUM)) {
       let hit = false;
       DRUM_ROWS.forEach((row, index) => {
         for (const { velocity, offset } of applied.pattern[index]?.[step] ?? []) {
@@ -487,7 +627,7 @@ export class WebAudioBackend implements AudioBackend {
       if (hit) sounding.push(DRUM);
     }
     for (const track of this.tracks) {
-      if (this.graph?.isConnected(track.id, MASTER) && track.play(step, time, duration)) sounding.push(track.id);
+      if (this.heard.has(track.id) && track.play(step, time, duration)) sounding.push(track.id);
     }
     if (this.listener) this.visuals.push({ time, event: { step, sounding } });
   }

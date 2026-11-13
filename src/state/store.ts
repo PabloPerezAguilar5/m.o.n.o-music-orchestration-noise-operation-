@@ -8,6 +8,16 @@ import {
 } from '../core/bass-patterns';
 import type { DroneMode, DronePreset } from '../core/drone';
 import { clampLeadOctave } from '../core/lead';
+import type { LfoShape } from '../core/lfo';
+import {
+  connect,
+  defaultCables,
+  sameCable,
+  toggleCut,
+  withoutNode,
+  type ConnectRefusal,
+  type ConnectResult,
+} from '../core/routing';
 import { SCALE_IDS } from '../core/scales';
 import { EMPTY_DRUM_PATTERN, generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
@@ -48,37 +58,52 @@ export class Store extends Emitter implements Source<AppState> {
     return this.state.added.includes(id);
   }
 
-  /** Adds a node, selects it and starts playback. Returns false if it was already there. */
+  /**
+   * Adds a node, selects it and starts playback. It comes plugged into MASTER (the LFO
+   * waits to be patched). Returns false if it was already there.
+   */
   addNode(id: NodeId): boolean {
     if (this.has(id)) return false;
-    const { added, transport } = this.state;
+    const { added, transport, cables } = this.state;
     this.update({
       added: [...added, id],
       selected: id,
+      cables: [...cables, ...defaultCables(id)],
       transport: transport.playing ? transport : { ...transport, playing: true },
     });
     return true;
   }
 
-  /** Removes a node (never MASTER). Selection falls back to MASTER if it was selected. */
+  /**
+   * Removes a node (never MASTER) and its cables. A generator that only fed it goes
+   * straight to MASTER (routing.ts). Selection falls back to MASTER if it was selected.
+   */
   removeNode(id: NodeId): void {
     if (id === 'master' || !this.has(id)) return;
-    const { added, selected, unplugged } = this.state;
+    const { added, selected, cables } = this.state;
     this.update({
       added: added.filter((other) => other !== id),
       selected: selected === id ? 'master' : selected,
-      // A node added again comes back plugged in.
-      unplugged: unplugged.filter((other) => other !== id),
+      cables: withoutNode(cables, id),
     });
   }
 
-  /** Cuts a node's cable to MASTER, or plugs it back. MASTER has no cable. */
-  toggleCable(id: NodeId): void {
-    if (id === 'master' || !this.has(id)) return;
-    const { unplugged } = this.state;
-    this.update({
-      unplugged: unplugged.includes(id) ? unplugged.filter((other) => other !== id) : [...unplugged, id],
-    });
+  /**
+   * Plugs `from`'s output into `to`'s input (routing.ts: inserting an effect, loops
+   * refused). Both must be on the canvas.
+   */
+  connect(from: NodeId, to: NodeId): ConnectResult {
+    if (!this.has(from) || !this.has(to)) return { ok: false, reason: 'no-input' as ConnectRefusal };
+    const result = connect(this.state.cables, from, to);
+    if (result.ok && result.changed) this.update({ cables: result.cables });
+    return result;
+  }
+
+  /** Cuts a cable, or plugs a cut one back in. */
+  toggleCable(from: NodeId, to: NodeId): void {
+    const { cables } = this.state;
+    if (!cables.some((cable) => sameCable(cable, { from, to }))) return;
+    this.update({ cables: toggleCut(cables, from, to) });
   }
 
   selectNode(id: NodeId): void {
@@ -359,6 +384,20 @@ export class Store extends Emitter implements Source<AppState> {
     const { drone } = this.state;
     if (drone.mode === mode) return;
     this.update({ drone: { ...drone, mode } });
+  }
+
+  // LFO -----------------------------------------------------------------------------------------
+
+  setLfoShape(shape: LfoShape): void {
+    const { lfo } = this.state;
+    if (lfo.shape === shape) return;
+    this.update({ lfo: { ...lfo, shape } });
+  }
+
+  /** SYNC on or off: VELOCIDAD in divisions of the tempo, or in Hz. */
+  toggleLfoSync(): void {
+    const { lfo } = this.state;
+    this.update({ lfo: { ...lfo, sync: !lfo.sync } });
   }
 
   setDistType(type: DistType): void {

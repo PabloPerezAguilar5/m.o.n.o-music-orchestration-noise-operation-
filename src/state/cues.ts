@@ -1,11 +1,13 @@
 /**
- * One-shot requests for the audio that are not state: nothing is stored, nothing is
- * saved. The UI sends them; audio-link hands them to the backend.
+ * One-shot messages that are not state: nothing is stored, nothing is saved. The UI
+ * sends them; audio-link hands the audio ones to the backend, the panel shows notices.
  */
 
 export type Cue =
   /** Play one sample hit of a kit right away, to hear it. */
-  { readonly type: 'audition'; readonly kit: string };
+  | { readonly type: 'audition'; readonly kit: string }
+  /** A line for the display (a cable made, or why it could not be). */
+  | { readonly type: 'notice'; readonly text: string };
 
 export type CueListener = (cue: Cue) => void;
 

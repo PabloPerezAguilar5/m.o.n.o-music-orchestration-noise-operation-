@@ -331,8 +331,8 @@ describe('Live: liberación (nada queda colgado)', () => {
   it('con HOLD, cortar el cable o parar el transporte también suelta la nota sostenida', () => {
     store.addNode('lead');
     store.toggleLeadHold();
-    for (const cut of [() => store.toggleCable('lead'), () => store.togglePlay()]) {
-      if (store.getState().unplugged.includes('lead')) store.toggleCable('lead');
+    for (const cut of [() => store.toggleCable('lead', 'master'), () => store.togglePlay()]) {
+      if (store.getState().cables.some((c) => c.from === 'lead' && c.cut)) store.toggleCable('lead', 'master');
       if (!store.getState().transport.playing) store.togglePlay();
       events = [];
       live.keyDown(1, 0);
@@ -347,12 +347,12 @@ describe('Live: liberación (nada queda colgado)', () => {
   it('cortar el cable, sacar el nodo o parar el transporte suelta las notas del LEAD', () => {
     store.addNode('lead');
     for (const cut of [
-      () => store.toggleCable('lead'),
+      () => store.toggleCable('lead', 'master'),
       () => store.removeNode('lead'),
       () => store.togglePlay(),
     ]) {
       if (!store.getState().added.includes('lead')) store.addNode('lead');
-      if (store.getState().unplugged.includes('lead')) store.toggleCable('lead');
+      if (store.getState().cables.some((c) => c.from === 'lead' && c.cut)) store.toggleCable('lead', 'master');
       if (!store.getState().transport.playing) store.togglePlay();
       events = [];
       live.keyDown(1, 0);
@@ -417,13 +417,13 @@ describe('Live: liberación (nada queda colgado)', () => {
     expect(live.getState().layers).toHaveLength(1);
 
     const cuts: [() => void, string][] = [
-      [() => store.toggleCable('drone'), 'clear'], // unheard: silence now, tails included
+      [() => store.toggleCable('drone', 'master'), 'clear'], // unheard: silence now, tails included
       [() => store.removeNode('drone'), 'clear'],
       [() => store.togglePlay(), 'stop'], // the layers fade with their release
     ];
     for (const [cut, type] of cuts) {
       if (!store.getState().added.includes('drone')) store.addNode('drone');
-      if (store.getState().unplugged.includes('drone')) store.toggleCable('drone');
+      if (store.getState().cables.some((c) => c.from === 'drone' && c.cut)) store.toggleCable('drone', 'master');
       if (!store.getState().transport.playing) store.togglePlay();
       store.setDroneMode('hold');
       live.padDown(9, { x: 0.5, y: 0.5 });

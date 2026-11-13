@@ -43,7 +43,11 @@ export function linkAudio(
       state.params.drone,
       state.drone.preset,
       state.key,
-      state.unplugged,
+      state.cables,
+      state.params.dist,
+      state.distType,
+      state.params.lfo,
+      state.lfo,
       state.transport.bpm,
       state.metronome,
     ];

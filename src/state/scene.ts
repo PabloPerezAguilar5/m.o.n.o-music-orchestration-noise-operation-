@@ -1,5 +1,6 @@
 import type { AudioScene } from '../core/audio-scene';
 import { DRUM_ROWS, drumToneParam, drumVolumeParam, MACRO_PARAM, type DrumRow } from '../core/nodes';
+import { liveCables } from '../core/routing';
 import type { AppState } from './types';
 
 /** What should sound for a given app state. */
@@ -20,7 +21,7 @@ export function sceneFromState(state: AppState): AudioScene {
   return {
     bpm: state.transport.bpm,
     nodes: state.added,
-    cables: state.added.filter((id) => id !== 'master' && !state.unplugged.includes(id)),
+    cables: liveCables(state.cables, state.added).map(({ from, to }) => ({ from, to })),
     master: {
       volume: master.volume ?? 0,
       drumLevel: master.drumLevel ?? 0,
@@ -74,6 +75,21 @@ export function sceneFromState(state: AppState): AudioScene {
       detune: droneKnobs.detune ?? 0,
       volume: droneKnobs.volume ?? 0,
       chaos: droneKnobs[MACRO_PARAM] ?? 0,
+    },
+    dist: {
+      type: state.distType,
+      drive: state.params.dist.drive ?? 0,
+      tone: state.params.dist.tone ?? 0,
+      mix: state.params.dist.mix ?? 0,
+      output: state.params.dist.output ?? 0,
+      chaos: state.params.dist[MACRO_PARAM] ?? 0,
+    },
+    lfo: {
+      shape: state.lfo.shape,
+      sync: state.lfo.sync,
+      rate: state.params.lfo.rate ?? 0,
+      depth: state.params.lfo.depth ?? 0,
+      chaos: state.params.lfo[MACRO_PARAM] ?? 0,
     },
     drum: {
       kit: state.drum.kit,

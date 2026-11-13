@@ -12,6 +12,8 @@ export interface StepEvent {
 
 export type StepListener = (event: StepEvent) => void;
 export type StatusListener = (status: AudioStatus) => void;
+/** A stretch of the LFO's wave (-1..1, before CANTIDAD), LFO_TRACE_RATE values a second. */
+export type LfoTraceListener = (values: Float32Array) => void;
 
 /**
  * Boundary between the app and whatever produces sound and musical time.
@@ -37,4 +39,6 @@ export interface AudioBackend {
   audition(kit: string): void;
   /** Status changes (audio running, kits available, failed files). Returns an unsubscribe function. */
   onStatus(listener: StatusListener): () => void;
+  /** The LFO's wave as it runs, for the display and the knob rings. Returns an unsubscribe function. */
+  onLfoTrace(listener: LfoTraceListener): () => void;
 }

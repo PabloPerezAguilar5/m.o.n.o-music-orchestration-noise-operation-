@@ -3,6 +3,7 @@ import type { DroneMode, DronePreset } from '../core/drone';
 import { DEGREES, degreeName, ROOTS, SYNTH_STEPS, synthMidi, type ScaleId } from '../core/scales';
 import type { SynthMode } from '../core/synth-patterns';
 import type { SynthPreset } from '../core/synth-voices';
+import type { LfoShape } from '../core/lfo';
 import type { DistType, NodeId } from '../core/nodes';
 
 /** Interface texts (Spanish). */
@@ -36,8 +37,8 @@ export const KNOB_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   drum: ['TONO', 'VOL', 'TONO', 'VOL', 'TONO', 'VOL', 'TONO', 'VOL'],
   bass: ['CUTOFF', 'RESO', 'DECAY', 'DRIVE'],
   drone: ['FILTRO', 'ATAQUE', 'RELEASE', 'DESAF.', 'VOL'],
-  dist: ['DRIVE', 'TONO', 'MEZCLA'],
-  lfo: ['FORMA', 'VELOC.', 'CANT.'],
+  dist: ['DRIVE', 'TONO', 'MEZCLA', 'SALIDA'],
+  lfo: ['VELOCIDAD', 'CANTIDAD'],
   lead: ['ONDA', 'CUTOFF', 'RESO', 'ATAQUE', 'RELEASE', 'GLIDE'],
 };
 
@@ -142,6 +143,13 @@ export const DIST_TYPE_LABELS: Readonly<Record<DistType, string>> = {
   crush: 'CRUSH',
 };
 
+export const LFO_SHAPE_LABELS: Readonly<Record<LfoShape, string>> = {
+  sine: 'SENO',
+  triangle: 'TRIÁNGULO',
+  square: 'CUADRADA',
+  random: 'RANDOM',
+};
+
 export const TEXT = {
   logo: 'm.o.n.o',
   plaque: 'M.O.N.O',
@@ -189,6 +197,15 @@ export const TEXT = {
   soundSection: 'SONIDO',
   soundHint: 'Sonido',
   cableHint: 'Cortar o reconectar el cable',
+  portHint: 'Salida: arrastrá hasta otro nodo para conectar',
+  cableLoop: 'Esa conexión crearía un bucle',
+  cableNoInput: 'no tiene entrada',
+  cableLfoMaster: 'El LFO no modula el MASTER',
+  shapeSection: 'FORMA',
+  syncSection: 'SYNC',
+  sync: 'SYNC',
+  syncHint: 'Sync: la velocidad en divisiones del tempo del MASTER',
+  typeSection: 'TIPO',
   keyboardSection: 'TECLADO',
   octave: 'OCT',
   octaveDown: 'Bajar una octava',

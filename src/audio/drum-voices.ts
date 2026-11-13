@@ -70,9 +70,13 @@ export function playSynthVoice(
   time: number,
   velocity: number,
   rate: number,
+  /** The LFO on TONO, in cents, if any: it bends this hit while it sounds. */
+  pitchMod: AudioNode | null = null,
 ): AudioScheduledSourceNode[] {
   const voice = VOICES[row];
   const sources: AudioScheduledSourceNode[] = [];
+  /** Params the LFO feeds, to let go of when the hit ends. */
+  const detuned: AudioParam[] = [];
   const end = time + voice.decay + 0.01;
 
   const envelope = context.createGain();
@@ -87,6 +91,8 @@ export function playSynthVoice(
     oscillator.frequency.setValueAtTime(voice.tone.start * rate, time);
     oscillator.frequency.exponentialRampToValueAtTime(voice.tone.end * rate, time + voice.tone.sweep);
     oscillator.connect(envelope);
+    pitchMod?.connect(oscillator.detune);
+    detuned.push(oscillator.detune);
     sources.push(oscillator);
   }
   if (voice.noise) {
@@ -99,12 +105,24 @@ export function playSynthVoice(
     const mix = context.createGain();
     mix.gain.value = voice.noise.mix;
     noise.connect(filter).connect(mix).connect(envelope);
+    pitchMod?.connect(filter.detune);
+    detuned.push(filter.detune);
     sources.push(noise);
   }
   for (const source of sources) {
     source.start(time);
     source.stop(end);
   }
-  sources[0]?.addEventListener('ended', () => envelope.disconnect());
+  sources[0]?.addEventListener('ended', () => {
+    envelope.disconnect();
+    if (!pitchMod) return;
+    for (const node of [...detuned]) {
+      try {
+        pitchMod.disconnect(node);
+      } catch {
+        // Already let go.
+      }
+    }
+  });
   return sources;
 }

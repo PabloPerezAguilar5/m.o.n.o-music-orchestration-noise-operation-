@@ -66,6 +66,8 @@ export class DroneVoice {
     sound: DroneLayerSound,
     time: number,
     onEnded: () => void,
+    /** The LFO on FILTRO, in cents, if the node has one: it moves this layer's filter too. */
+    private readonly cutoffMod: AudioNode | null = null,
   ) {
     const character = DRONE_CHARACTERS[preset];
     const [main, detuned, bell, sub, noiseLevel] = character.mix;
@@ -149,6 +151,7 @@ export class DroneVoice {
     }
     this.lfoCutoff.connect(this.filter.detune);
     this.driftCutoff.connect(this.filter.detune);
+    this.cutoffMod?.connect(this.filter.detune);
 
     // Envelope: linear rise to full over the attack.
     const gain = this.envelope.gain;
@@ -158,6 +161,7 @@ export class DroneVoice {
     const all: AudioScheduledSourceNode[] = [...this.sources.map((s) => s.node), this.lfo, ...drifts];
     for (const source of all) source.start(time);
     this.sources[0]!.node.onended = () => {
+      this.unmodulate();
       for (const node of this.nodes) node.disconnect();
       onEnded();
     };
@@ -193,8 +197,18 @@ export class DroneVoice {
     return this.releaseEnd - time;
   }
 
+  /** Lets go of the node's LFO, which outlives the layer. */
+  private unmodulate(): void {
+    try {
+      this.cutoffMod?.disconnect(this.filter.detune);
+    } catch {
+      // Already let go.
+    }
+  }
+
   /** Stops at once (the module is going away). */
   dispose(): void {
+    this.unmodulate();
     for (const source of this.allSources) {
       try {
         source.stop();

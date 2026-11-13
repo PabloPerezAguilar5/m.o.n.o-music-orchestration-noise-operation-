@@ -1,7 +1,9 @@
 /**
  * The live audio graph: modules (one per canvas node) and the cables between them.
  *
- * Every cable is a real connection through its own GainNode. Connecting fades it in
+ * Every cable is a real connection through its own GainNode, from a module's output to
+ * another module's input (or to `inputFor(source)`: a mixer channel, or the parameter the
+ * LFO moves). An input hears the sum of its cables. Connecting fades it in
  * and cutting it fades it out before the nodes are disconnected, so cables can be
  * made and cut while playing without clicks or gaps. All changes take an explicit
  * audio time, so the caller can line them up with the next bar.
@@ -15,8 +17,8 @@ export interface AudioModule {
   dispose(): void;
 }
 
-/** Cable fade in/out, seconds. */
-export const CABLE_FADE = 0.015;
+/** Cable fade in/out, seconds: long enough to never click, short enough to feel instant. */
+export const CABLE_FADE = 0.02;
 /** Extra wait before releasing nodes that have faded out, seconds. */
 const RELEASE_MARGIN = 0.05;
 
@@ -99,10 +101,12 @@ export class AudioGraph {
     this.cables.delete(id);
 
     const param = cable.gain.gain;
-    // Start the fade-out from wherever the fade-in had reached at `time`.
+    // Start the fade-out from wherever the fade-in had reached at `time`. Cancelling drops
+    // the fade-in's ramp from its start, so it is redrawn up to `time` (a ramp, not a set:
+    // setting the value there would jump to it and click).
     const opened = Math.min(1, Math.max(0, (time - cable.openedAt) / CABLE_FADE));
     param.cancelScheduledValues(time);
-    param.setValueAtTime(opened, time);
+    param.linearRampToValueAtTime(opened, time);
     param.linearRampToValueAtTime(0, time + CABLE_FADE);
     this.release(time + CABLE_FADE, () => {
       cable.source.disconnect(cable.gain);
@@ -118,6 +122,25 @@ export class AudioGraph {
   /** Current cables as "from->to". */
   cableIds(): string[] {
     return [...this.cables.keys()];
+  }
+
+  /** Current cables. */
+  links(): { from: string; to: string }[] {
+    return [...this.cables.values()].map(({ from, to }) => ({ from, to }));
+  }
+
+  /** Whether sound from `from` gets to `to` through cables (`skip`: sources that are not sound). */
+  reaches(from: string, to: string, skip?: string): boolean {
+    const seen = new Set<string>();
+    const stack = [from];
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      if (node === to) return true;
+      if (seen.has(node) || node === skip) continue;
+      seen.add(node);
+      for (const cable of this.cables.values()) if (cable.from === node) stack.push(cable.to);
+    }
+    return false;
   }
 
   /** Runs `free` once audio time has passed `time`. The timer only frees silent nodes; it plays nothing. */

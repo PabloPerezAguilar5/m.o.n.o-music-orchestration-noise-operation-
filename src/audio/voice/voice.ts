@@ -36,6 +36,8 @@ export interface VoiceDesign {
 /** Smoothed controls, the same for every voice of an engine, for the current sample. */
 export interface VoiceControls {
   cutoff: number;
+  /** The LFO on CUTOFF this sample, knob units (added to cutoff, within 0..1). */
+  cutoffMod: number;
   resonance: number;
   envMod: number;
   wave: number;
@@ -185,7 +187,8 @@ export class Voice {
     this.level += (this.levelTarget - this.level) * t.level;
 
     // Ladder: cutoff and resonance for this sample, two passes (2x oversampling).
-    const octaves = d.cutoffOctaves * c.cutoff + d.envOctaves * c.envMod * this.filterEnv + d.accentOctaves * this.accentEnv;
+    const cutoff = Math.min(1, Math.max(0, c.cutoff + c.cutoffMod));
+    const octaves = d.cutoffOctaves * cutoff + d.envOctaves * c.envMod * this.filterEnv + d.accentOctaves * this.accentEnv;
     const twice = rate * 2;
     const fc = Math.min(twice * 0.24, d.cutoffMinHz * 2 ** octaves);
     const g = 1 - Math.exp((-2 * Math.PI * fc) / twice);

@@ -127,23 +127,41 @@ describe('Store', () => {
   });
 
   describe('cables', () => {
-    it('cuts and plugs back a node cable; MASTER has none', () => {
+    it('a node comes plugged into MASTER; tapping its cable cuts it and plugs it back', () => {
       store.addNode('bass');
-      store.toggleCable('bass');
-      expect(store.getState().unplugged).toEqual(['bass']);
-      store.toggleCable('bass');
-      expect(store.getState().unplugged).toEqual([]);
-      store.toggleCable('master');
-      store.toggleCable('drum'); // not on the canvas
-      expect(store.getState().unplugged).toEqual([]);
+      expect(store.getState().cables).toEqual([{ from: 'bass', to: 'master', cut: false }]);
+      store.toggleCable('bass', 'master');
+      expect(store.getState().cables).toEqual([{ from: 'bass', to: 'master', cut: true }]);
+      store.toggleCable('bass', 'master');
+      expect(store.getState().cables).toEqual([{ from: 'bass', to: 'master', cut: false }]);
+      const before = store.getState();
+      store.toggleCable('drum', 'master'); // no such cable
+      expect(store.getState()).toBe(before);
     });
 
-    it('a removed node comes back plugged in', () => {
+    it('a removed node takes its cables with it and comes back plugged in', () => {
       store.addNode('bass');
-      store.toggleCable('bass');
+      store.toggleCable('bass', 'master');
       store.removeNode('bass');
+      expect(store.getState().cables).toEqual([]);
       store.addNode('bass');
-      expect(store.getState().unplugged).toEqual([]);
+      expect(store.getState().cables).toEqual([{ from: 'bass', to: 'master', cut: false }]);
+    });
+
+    it('the LFO comes without cables; DISTORSION comes plugged into MASTER', () => {
+      store.addNode('lfo');
+      store.addNode('dist');
+      expect(store.getState().cables).toEqual([{ from: 'dist', to: 'master', cut: false }]);
+    });
+
+    it('cables are plain data: they survive a JSON round trip', () => {
+      store.addNode('bass');
+      store.addNode('dist');
+      store.addNode('lfo');
+      store.connect('bass', 'dist');
+      store.connect('lfo', 'bass');
+      const cables = store.getState().cables;
+      expect(JSON.parse(JSON.stringify(cables))).toEqual(cables);
     });
   });
 

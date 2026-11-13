@@ -21,9 +21,14 @@ declare global {
       level(): number;
       mix(): { bus: number; out: number; reduction: number };
       clickLevel(): number;
+      /** The real audio graph's cables, as "from->to". */
+      cables(): string[];
+      /** The LFO's wave right now, or null while it does not run. */
+      lfo(): number | null;
       store: {
         getState(): { drum: { seed: number } };
         setParam(id: string, param: string, value: number): void;
+        connect(from: string, to: string): unknown;
       };
       /** LEAD and DRONE played by hand: a test finger, like the panel's. */
       live: {
@@ -398,9 +403,13 @@ test('la palabra semilla no aparece en la interfaz', async ({ page }) => {
   expect(texts).not.toMatch(/semilla|seed/i);
 });
 
-/** Clicks the middle of a node's cable (its tap target is an invisible wide line). */
+/**
+ * Clicks the middle of a cable (its tap target is an invisible wide line): "bass" is BASS's
+ * cable to MASTER, "bass-dist" the one from BASS to DISTORSION.
+ */
 async function clickCable(page: Page, id: string): Promise<void> {
-  const box = await page.locator(`#cb-${id}`).evaluate((line) => {
+  const cable = id.includes('-') ? id : `${id}-master`;
+  const box = await page.locator(`#cb-${cable}`).evaluate((line) => {
     const r = line.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   });
@@ -439,14 +448,14 @@ test.describe('BASS', () => {
 
     // Cut the cable: drawn as cut at once, silent from the next bar.
     await clickCable(page, 'bass');
-    await expect(page.locator('#cb-bass')).toHaveClass(/\boff\b/);
+    await expect(page.locator('#cb-bass-master')).toHaveClass(/\boff\b/);
     await page.waitForTimeout(2300); // up to one bar at 120 bpm, plus the release
     expect(await peakLevel(page)).toBeLessThan(0.001);
     await expect(page.locator('#nd-bass.on')).toHaveCount(0);
 
     // Plug it back: sound again from the next bar, without stopping playback.
     await clickCable(page, 'bass');
-    await expect(page.locator('#cb-bass')).not.toHaveClass(/\boff\b/);
+    await expect(page.locator('#cb-bass-master')).not.toHaveClass(/\boff\b/);
     await page.waitForTimeout(2100);
     expect(await peakLevel(page)).toBeGreaterThan(0.01);
     await expect(page.locator('#play')).toHaveClass(/on/);
@@ -546,7 +555,7 @@ test.describe('SYNTH', () => {
     await expect(page.locator('#nd-synth.on')).toHaveCount(1, { timeout: 2000 });
 
     await clickCable(page, 'synth');
-    await expect(page.locator('#cb-synth')).toHaveClass(/\boff\b/);
+    await expect(page.locator('#cb-synth-master')).toHaveClass(/\boff\b/);
     await page.waitForTimeout(2600); // up to one bar at 120 bpm, plus the release of a PLUCK
     expect(await peakLevel(page)).toBeLessThan(0.001);
 
@@ -716,12 +725,12 @@ test.describe('LEAD', () => {
     await page.evaluate(() => window.__mono.live.keyDown(1, 0));
     expect(await peakLevel(page)).toBeGreaterThan(0.01);
     await clickCable(page, 'lead');
-    await expect(page.locator('#cb-lead')).toHaveClass(/\boff\b/);
+    await expect(page.locator('#cb-lead-master')).toHaveClass(/\boff\b/);
     await waitQuiet(page, 2000, 'cable cortado');
     await expect(page.locator('#nd-lead')).not.toHaveClass(/\bon\b/);
     // Plugged back, nothing comes back by itself: the note was released, not muted.
     await clickCable(page, 'lead');
-    await expect(page.locator('#cb-lead')).not.toHaveClass(/\boff\b/);
+    await expect(page.locator('#cb-lead-master')).not.toHaveClass(/\boff\b/);
     expect(await peakLevel(page), 'cable reconectado').toBeLessThan(0.001);
     // And the keys play again.
     await holdKey(page, 7);
@@ -900,5 +909,70 @@ test.describe('mezcla con LEAD y DRONE', () => {
     expect(mix.bus).toBeGreaterThan(0.2);
     expect(mix.out).toBeLessThan(1);
     expect(mix.reduction).toBeGreaterThan(-6);
+  });
+});
+
+/** Drags a cable from a node's output port and drops it on another node. */
+async function patchCable(page: Page, from: string, to: string): Promise<void> {
+  const port = (await page.locator(`#port-${from} .pdot`).boundingBox())!;
+  const target = (await page.locator(`#nd-${to} .hit`).boundingBox())!;
+  await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
+  await page.mouse.up();
+}
+
+/** The cables of the real audio graph, as "from->to", sorted. */
+const graphCables = async (page: Page): Promise<string[]> =>
+  (await page.evaluate(() => window.__mono.cables())).sort();
+
+test.describe('ruteo', () => {
+  test('BASS a la DISTORSION y el LFO al BASS: cables reales, se oye, y el aro se mueve', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'bass');
+    await addNode(page, 'dist');
+    await addNode(page, 'lfo');
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+
+    await patchCable(page, 'bass', 'dist');
+    await expect(page.locator('#cb-bass-dist')).toHaveCount(1);
+    // At the next bar the graph follows: BASS → DISTORSION → MASTER, no direct cable.
+    await expect.poll(() => graphCables(page), { timeout: 5000 }).toEqual(['bass->dist', 'dist->master']);
+    expect(await peakLevel(page), 'BASS por la DISTORSION').toBeGreaterThan(0.01);
+    // DISTORSION lights with what goes through it.
+    await expect(page.locator('#nd-dist')).toHaveClass(/\bon\b/, { timeout: 4000 });
+
+    await patchCable(page, 'lfo', 'bass');
+    await expect.poll(() => graphCables(page), { timeout: 5000 }).toContain('lfo->bass');
+    await expect.poll(() => page.evaluate(() => window.__mono.lfo()), { timeout: 3000 }).not.toBeNull();
+    // The ring on CUTOFF moves with the wave; the knob itself stays where it was put.
+    await page.click('#nd-bass');
+    const knob = page.locator('mono-knob[data-param="cutoff"] .kn');
+    const ring = (): Promise<number> => knob.evaluate((el) => Number(el.style.getPropertyValue('--m') || 'NaN'));
+    const value = await knob.getAttribute('aria-valuenow');
+    await expect.poll(ring).not.toBeNaN();
+    const first = await ring();
+    await expect.poll(async () => Math.abs((await ring()) - first), { timeout: 3000 }).toBeGreaterThan(0.01);
+    expect(await knob.getAttribute('aria-valuenow')).toBe(value);
+
+    // DISTORSION's output cut: everything through it goes quiet at the bar.
+    await clickCable(page, 'dist');
+    await expect(page.locator('#cb-dist-master')).toHaveClass(/\boff\b/);
+    await waitQuiet(page, 5000, 'salida de la DISTORSION cortada');
+    expect(errors).toEqual([]);
+  });
+
+  test('el nivel de BASS en el MASTER se aplica a su salida, también hacia la DISTORSION', async ({ page }) => {
+    await page.goto('/');
+    await addNode(page, 'bass');
+    await addNode(page, 'dist');
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+    await page.evaluate(() => window.__mono.store.connect('bass', 'dist'));
+    await expect.poll(() => graphCables(page), { timeout: 5000 }).toEqual(['bass->dist', 'dist->master']);
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    // BASS level all the way down on MASTER: nothing reaches DISTORSION any more.
+    await page.evaluate(() => window.__mono.store.setParam('master', 'bassLevel', 0));
+    await waitQuiet(page, 3000, 'nivel de BASS en 0');
   });
 });

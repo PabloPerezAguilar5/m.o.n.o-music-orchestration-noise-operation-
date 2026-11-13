@@ -3,16 +3,18 @@ import { BassSequencer } from '../core/bass-patterns';
 import { clickAt, type Click } from '../core/metronome';
 import type { LiveEvent } from '../core/live-events';
 import type { NodeId } from '../core/nodes';
+import { reaches } from '../core/routing';
 import { bassMidi, synthMidi } from '../core/scales';
 import { LookaheadScheduler } from '../core/scheduler';
 import { SynthSequencer } from '../core/synth-patterns';
 import type { VoiceEvent } from '../core/voice-events';
-import type { AudioBackend, StatusListener, StepListener } from './backend';
+import type { AudioBackend, LfoTraceListener, StatusListener, StepListener } from './backend';
 
 /**
  * Soundless backend for tests. Nothing runs on its own: the test moves time with
  * advanceTo(), and steps are delivered as they become due. A node counts as sounding
- * on a step when its cable is plugged in and it plays something there.
+ * on a step when its sound reaches MASTER through the scene's cables and it plays
+ * something there.
  */
 export class SilentBackend implements AudioBackend {
   readonly scenes: AudioScene[] = [];
@@ -71,6 +73,10 @@ export class SilentBackend implements AudioBackend {
     return () => this.statusListeners.delete(listener);
   }
 
+  onLfoTrace(_listener: LfoTraceListener): () => void {
+    return () => undefined;
+  }
+
   /** Reports a status, as the real backend would. */
   emitStatus(status: AudioStatus = INITIAL_AUDIO_STATUS): void {
     for (const listener of this.statusListeners) listener(status);
@@ -84,16 +90,17 @@ export class SilentBackend implements AudioBackend {
       const click = scene?.metronome.on ? clickAt(step) : null;
       if (click) this.clicks.push({ step, time, click });
       const sounding: NodeId[] = [];
-      if (scene?.cables.includes('drum') && scene.drum.pattern.some((row) => (row[step]?.length ?? 0) > 0)) {
+      const heard = (id: NodeId): boolean => !!scene && reaches(scene.cables, id, 'master');
+      if (scene && heard('drum') && scene.drum.pattern.some((row) => (row[step]?.length ?? 0) > 0)) {
         sounding.push('drum');
       }
-      if (scene?.cables.includes('bass')) {
+      if (scene && heard('bass')) {
         const { pattern, root, scale, slides } = scene.bass;
         const events = this.bassSequencer.step(pattern, step, time, duration, (d) => bassMidi(root, scale, d), 1, slides);
         this.bassEvents.push(...events);
         if (events.some((event) => event.type === 'on')) sounding.push('bass');
       }
-      if (scene?.cables.includes('synth')) {
+      if (scene && heard('synth')) {
         const { pattern, root, scale } = scene.synth;
         const events = this.synthSequencer.step(pattern, step, time, duration, (n) => synthMidi(root, scale, n));
         this.synthEvents.push(...events);

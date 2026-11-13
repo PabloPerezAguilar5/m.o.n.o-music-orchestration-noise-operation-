@@ -4,6 +4,7 @@ import { droneLayerSound } from '../../core/drone-sound';
 import type { LiveEvent } from '../../core/live-events';
 import { createRng } from '../../core/random';
 import type { AudioModule } from '../graph';
+import { DRONE_FILTER_CENTS, MOD_SOURCE } from '../modulation';
 import { DroneFx, hallImpulse } from './drone-fx';
 import { DroneVoice } from './drone-voice';
 
@@ -53,6 +54,8 @@ function noiseBuffer(context: BaseAudioContext): AudioBuffer {
 export class DroneModule implements AudioModule, DroneEngine {
   readonly input: GainNode;
   readonly output: GainNode;
+  /** The LFO on FILTRO: knob units in, cents out, into every layer's filter. */
+  private readonly mod: GainNode;
   private fx: DroneFx;
   private readonly impulse: AudioBuffer;
   private readonly noise: AudioBuffer;
@@ -66,11 +69,18 @@ export class DroneModule implements AudioModule, DroneEngine {
   ) {
     this.input = context.createGain();
     this.output = context.createGain();
+    this.mod = context.createGain();
+    this.mod.gain.value = DRONE_FILTER_CENTS;
     this.impulse = hallImpulse(context);
     this.noise = noiseBuffer(context);
     this.scene = scene.drone;
     this.bpm = scene.bpm;
     this.fx = this.newFx(context.currentTime);
+  }
+
+  /** The LFO's cable lands on FILTRO; sound cables (none: DRONE has no input) on `input`. */
+  inputFor(source: string): AudioNode {
+    return source === MOD_SOURCE ? this.mod : this.input;
   }
 
   get layers(): number {
@@ -132,9 +142,19 @@ export class DroneModule implements AudioModule, DroneEngine {
     const preset = this.scene.preset;
     const placeholder = { preset, x, y };
     const sound = droneLayerSound(preset, this.scene, placeholder, this.active() + 1);
-    const voice = new DroneVoice(this.context, this.fx, this.noise, preset, id, sound, time, () => {
-      if (this.sounding.get(id)?.voice === voice) this.sounding.delete(id);
-    });
+    const voice = new DroneVoice(
+      this.context,
+      this.fx,
+      this.noise,
+      preset,
+      id,
+      sound,
+      time,
+      () => {
+        if (this.sounding.get(id)?.voice === voice) this.sounding.delete(id);
+      },
+      this.mod,
+    );
     this.sounding.set(id, { ...placeholder, voice });
     // The others make room: each layer gets 1/√n of the level.
     this.retune(time);
@@ -168,6 +188,7 @@ export class DroneModule implements AudioModule, DroneEngine {
     for (const layer of this.sounding.values()) layer.voice.dispose();
     this.sounding.clear();
     this.fx.dispose();
+    this.mod.disconnect();
     this.input.disconnect();
     this.output.disconnect();
   }

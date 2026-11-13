@@ -14,15 +14,11 @@ export const HIT_PULSE_MS = 170;
  *
  * `sounding` are the nodes the audio engine really played on this step (DRUM, BASS and
  * SYNTH): they light up from that. LEAD and DRONE are played live and stay lit while
- * they sound (state/live.ts). The nodes that make no sound yet keep the stage 1
- * simulation until their own stage: DISTORSION and MASTER on each beat, LFO every
- * other step.
+ * they sound (state/live.ts). DISTORSION lights with what goes through it and the LFO
+ * glows with its wave (both drawn by the canvas). MASTER keeps its beat.
  */
 export function pulsesAt(step: number, sounding: readonly NodeId[]): Pulse[] {
   const pulses: Pulse[] = sounding.map((id) => ({ id, ms: HIT_PULSE_MS }));
-  if (step % 4 === 0) {
-    pulses.push({ id: 'dist', ms: 520 }, { id: 'master', ms: 220 });
-  }
-  if (step % 2 === 0) pulses.push({ id: 'lfo', ms: 200 });
+  if (step % 4 === 0) pulses.push({ id: 'master', ms: 220 });
   return pulses;
 }

@@ -4,6 +4,7 @@ import type { Point } from '../core/geometry';
 import { LeadNotes, leadMidi, leadReleaseTime, leadVariation, type LeadNoteEvent } from '../core/lead';
 import type { LiveEvent } from '../core/live-events';
 import { MACRO_PARAM, type NodeId } from '../core/nodes';
+import { reachesMaster } from '../core/routing';
 import { createRng, randomSeed, type RandomSource } from '../core/random';
 import { Emitter, type Source } from './emitter';
 import type { Store } from './store';
@@ -33,8 +34,8 @@ const TAIL_SPANS = 4;
 
 const tailMs = (seconds: number): number => Math.min(MAX_TAIL_MS, Math.max(MIN_TAIL_MS, seconds * 1000));
 
-/** On the canvas with its cable to MASTER plugged in. */
-const plays = (state: AppState, id: NodeId): boolean => state.added.includes(id) && !state.unplugged.includes(id);
+/** On the canvas, its sound reaching MASTER through plugged-in cables (maybe through an effect). */
+const plays = (state: AppState, id: NodeId): boolean => reachesMaster(state.cables, state.added, id);
 
 /**
  * The live instruments, LEAD and DRONE: touches in, live events out. The panel reports

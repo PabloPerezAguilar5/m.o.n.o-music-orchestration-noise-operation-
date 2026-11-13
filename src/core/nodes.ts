@@ -76,8 +76,8 @@ export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
     rows: ['degree4', 'degree3', 'degree2', 'degree1', 'degree0', 'slide', 'accent'],
   },
   drone: { params: ['filter', 'attack', 'release', 'detune', 'volume'], zone: 'xy', rows: [] },
-  dist: { params: ['drive', 'tone', 'mix'], zone: 'type', rows: [] },
-  lfo: { params: ['shape', 'rate', 'depth'], zone: 'wave', rows: [] },
+  dist: { params: ['drive', 'tone', 'mix', 'output'], zone: 'type', rows: [] },
+  lfo: { params: ['rate', 'depth'], zone: 'wave', rows: [] },
   lead: {
     params: ['wave', 'cutoff', 'resonance', 'attack', 'release', 'glide'],
     zone: 'keys',

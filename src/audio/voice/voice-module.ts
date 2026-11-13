@@ -1,7 +1,9 @@
 import type { VoiceEvent } from '../../core/voice-events';
 import type { AudioModule } from '../graph';
+import { MOD_SOURCE, modSpan } from '../modulation';
 import type { EngineParams } from './engine';
 import {
+  CUTOFF_MOD,
   VOICE_PROCESSOR,
   type VoiceInstrument,
   type VoiceMessage,
@@ -29,11 +31,14 @@ export function loadVoiceProcessor(context: BaseAudioContext): Promise<void> {
 /**
  * An instrument on the shared voice engine, in the audio graph: the worklet into
  * `output`. It makes sound rather than processing it, so `input` is unused. Note
- * events and parameters go to the audio thread as messages.
+ * events and parameters go to the audio thread as messages; the LFO's cable lands on
+ * the processor's CUTOFF parameter, sample by sample.
  */
 export class VoiceModule implements AudioModule {
   readonly input: GainNode;
   readonly output: GainNode;
+  /** The LFO on CUTOFF: scaled to the instrument's span, into the processor. */
+  private readonly mod: GainNode;
   private readonly node: AudioWorkletNode;
 
   constructor(context: BaseAudioContext, instrument: VoiceInstrument, level: number) {
@@ -47,6 +52,14 @@ export class VoiceModule implements AudioModule {
       processorOptions: { instrument } satisfies VoiceProcessorOptions,
     });
     this.node.connect(this.output);
+    this.mod = context.createGain();
+    this.mod.gain.value = modSpan(instrument);
+    const cutoff = this.node.parameters.get(CUTOFF_MOD);
+    if (cutoff) this.mod.connect(cutoff);
+  }
+
+  inputFor(source: string): AudioNode {
+    return source === MOD_SOURCE ? this.mod : this.input;
   }
 
   setParams(params: EngineParams): void {
@@ -68,6 +81,7 @@ export class VoiceModule implements AudioModule {
   dispose(): void {
     this.node.port.onmessage = null;
     this.node.disconnect();
+    this.mod.disconnect();
     this.input.disconnect();
     this.output.disconnect();
   }

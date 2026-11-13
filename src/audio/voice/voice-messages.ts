@@ -4,6 +4,9 @@ import type { EngineParams } from './engine';
 /** Name the voice processor registers in the AudioWorklet (one for every instrument). */
 export const VOICE_PROCESSOR = 'mono-voice';
 
+/** The processor's AudioParam for the LFO on CUTOFF (knob units). */
+export const CUTOFF_MOD = 'cutoffMod';
+
 /** Instruments built on the shared voice engine. */
 export type VoiceInstrument = 'bass' | 'synth' | 'lead';
 

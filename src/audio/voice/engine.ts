@@ -52,8 +52,11 @@ export interface VoiceDsp {
    * milliseconds whatever the release (the instrument can no longer be heard: cable cut).
    */
   allOff(hard?: boolean): void;
-  /** Writes samples [start, end) of `out`. */
-  render(out: Float32Array, start: number, end: number): void;
+  /**
+   * Writes samples [start, end) of `out`. `cutoffMod` is the LFO on CUTOFF, in knob units:
+   * one value for the whole block, or one per sample (indexed like `out`).
+   */
+  render(out: Float32Array, start: number, end: number, cutoffMod?: Float32Array): void;
 }
 
 /** Output stage, per instrument. */
@@ -119,7 +122,7 @@ export class VoiceEngine implements VoiceDsp {
     this.slide = coefficient(design.slideTime, rate);
     this.accentDecay = decayFactor(design.accentDecay, rate);
     const p = DEFAULT_ENGINE_PARAMS;
-    this.controls = { cutoff: p.cutoff, resonance: p.resonance, envMod: p.envMod, wave: p.wave, sub: p.sub, detune: p.detune };
+    this.controls = { cutoff: p.cutoff, cutoffMod: 0, resonance: p.resonance, envMod: p.envMod, wave: p.wave, sub: p.sub, detune: p.detune };
   }
 
   setParams(params: EngineParams): void {
@@ -164,7 +167,7 @@ export class VoiceEngine implements VoiceDsp {
     return this.activeVoices > 0;
   }
 
-  render(out: Float32Array, start: number, end: number): void {
+  render(out: Float32Array, start: number, end: number, cutoffMod?: Float32Array): void {
     const rate = this.rate;
     const k = this.smooth;
     const p = this.target;
@@ -185,6 +188,7 @@ export class VoiceEngine implements VoiceDsp {
 
     for (let i = start; i < end; i++) {
       c.cutoff += (clamp01(p.cutoff) - c.cutoff) * k;
+      c.cutoffMod = cutoffMod ? (cutoffMod.length === 1 ? cutoffMod[0]! : (cutoffMod[i] ?? 0)) : 0;
       c.resonance += (clamp01(p.resonance) - c.resonance) * k;
       c.envMod += (clamp01(p.envMod) - c.envMod) * k;
       c.wave += (clamp01(p.wave) - c.wave) * k;

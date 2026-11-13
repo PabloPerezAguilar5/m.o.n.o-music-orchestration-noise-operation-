@@ -2,6 +2,7 @@ import { rowGain, toneRate, type DrumRowScene } from '../core/audio-scene';
 import { DRUM_ROWS, type DrumRow } from '../core/nodes';
 import { playSynthVoice } from './drum-voices';
 import type { AudioModule } from './graph';
+import { DRUM_TONE_CENTS, MOD_SOURCE } from './modulation';
 
 /** A kit's decoded samples, by row. A row with no buffers falls back to a synthesized voice. */
 export interface LoadedKit {
@@ -26,6 +27,15 @@ const stopNow = (source: AudioScheduledSourceNode): void => {
   }
 };
 
+/** Lets go of an AudioParam fed by `node` (the LFO outlives every hit). */
+export function unplug(node: AudioNode, param: AudioParam): void {
+  try {
+    node.disconnect(param);
+  } catch {
+    // Already let go.
+  }
+}
+
 interface Playing {
   readonly sources: readonly AudioScheduledSourceNode[];
   readonly start: number;
@@ -34,10 +44,14 @@ interface Playing {
 /**
  * DRUM: four rows (kick, snare, hat, perc), each with its own volume and tone, summed
  * into `output`. DRUM makes sound rather than processing it, so `input` is unused.
+ * The LFO's cable moves the TONO of every row together: each hit's pitch follows it
+ * while it sounds.
  */
 export class DrumModule implements AudioModule {
   readonly input: GainNode;
   readonly output: GainNode;
+  /** The LFO on TONO: knob units in, cents out, into each hit's detune. */
+  private readonly mod: GainNode;
   private readonly rows: Record<DrumRow, GainNode>;
   private readonly rates: Record<DrumRow, number> = { kick: 1, snare: 1, hat: 1, perc: 1 };
   private kit: LoadedKit | null = null;
@@ -47,6 +61,8 @@ export class DrumModule implements AudioModule {
     this.input = context.createGain();
     this.output = context.createGain();
     this.output.gain.value = OUTPUT_LEVEL;
+    this.mod = context.createGain();
+    this.mod.gain.value = DRUM_TONE_CENTS;
     this.rows = Object.fromEntries(
       DRUM_ROWS.map((row) => {
         const gain = context.createGain();
@@ -54,6 +70,11 @@ export class DrumModule implements AudioModule {
         return [row, gain];
       }),
     ) as Record<DrumRow, GainNode>;
+  }
+
+  /** The LFO's cable lands on TONO; sound cables (none: DRUM has no input) on `input`. */
+  inputFor(source: string): AudioNode {
+    return source === MOD_SOURCE ? this.mod : this.input;
   }
 
   get kitId(): string | null {
@@ -94,7 +115,7 @@ export class DrumModule implements AudioModule {
     const buffer = buffers[variant % Math.max(1, buffers.length)];
     const sources = buffer
       ? [this.playSample(buffer, this.rows[row], time, velocity, rate)]
-      : playSynthVoice(this.context, row, this.rows[row], time, velocity, rate);
+      : playSynthVoice(this.context, row, this.rows[row], time, velocity, rate, this.mod);
 
     const entry: Playing = { sources, start: time };
     this.playing.add(entry);
@@ -114,6 +135,7 @@ export class DrumModule implements AudioModule {
     for (const entry of this.playing) entry.sources.forEach(stopNow);
     this.playing.clear();
     for (const gain of Object.values(this.rows)) gain.disconnect();
+    this.mod.disconnect();
     this.input.disconnect();
     this.output.disconnect();
   }
@@ -137,7 +159,11 @@ export class DrumModule implements AudioModule {
     envelope.gain.setValueAtTime(velocity, time + length - fade);
     envelope.gain.linearRampToValueAtTime(0, time + length);
     source.connect(envelope).connect(destination);
-    source.addEventListener('ended', () => envelope.disconnect());
+    this.mod.connect(source.detune);
+    source.addEventListener('ended', () => {
+      envelope.disconnect();
+      unplug(this.mod, source.detune);
+    });
     source.start(time);
     return source;
   }

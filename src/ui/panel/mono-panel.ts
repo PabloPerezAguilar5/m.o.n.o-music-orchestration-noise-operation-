@@ -28,6 +28,7 @@ import {
   leadRangeName,
 } from '../../core/lead';
 import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
+import { LFO_SHAPES, lfoRate, lfoRateLabel, MOD_TARGETS, type LfoShape } from '../../core/lfo';
 import { clickAt } from '../../core/metronome';
 import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } from '../../core/nodes';
 import type { Pattern } from '../../core/patterns';
@@ -44,13 +45,16 @@ import {
 } from '../../core/synth-patterns';
 import { SYNTH_PRESETS, type SynthPreset } from '../../core/synth-voices';
 import { cues, live, pulse, store } from '../../state';
+import type { Cue } from '../../state/cues';
 import {
   BASS_MODE_LABELS,
   bassRowLabels,
+  DIST_TYPE_LABELS,
   DRONE_MODE_LABELS,
   DRONE_PRESET_LABELS,
   KIT_ORDER,
   KNOB_LABELS,
+  LFO_SHAPE_LABELS,
   NODE_CODES,
   NODE_NAMES,
   ROW_LABELS,
@@ -74,7 +78,7 @@ import './mono-tempo';
 import type { TempoNudgeEvent, TempoSetEvent } from './mono-tempo';
 import './mono-type-switch';
 import type { TypeChangeEvent } from './mono-type-switch';
-import './mono-wave';
+import './mono-lfo-scope';
 import './mono-xy-pad';
 import type { PadDot, PadDownEvent, PadUpEvent } from './mono-xy-pad';
 
@@ -433,6 +437,10 @@ export class MonoPanel extends LitElement {
   /** What is being played by hand: LEAD keys down, DRONE layers. */
   private readonly live = new Selector(this, live, (s) => s);
   private readonly distType = new Selector(this, store, (s) => s.distType);
+  private readonly lfo = new Selector(this, store, (s) => s.lfo);
+  private readonly cables = new Selector(this, store, (s) => s.cables);
+  private readonly added = new Selector(this, store, (s) => s.added);
+  private unlistenCues: (() => void) | null = null;
   private readonly bpm = new Selector(this, store, (s) => s.transport.bpm);
   private readonly step = new Selector(this, store, (s) => s.transport.step);
   private readonly drum = new Selector(this, store, (s) => s.drum);
@@ -447,6 +455,20 @@ export class MonoPanel extends LitElement {
   /** Last knob reading, shown on the display until another node is selected. */
   @state() private reading: string | null = null;
   private shownNode: NodeId | null = null;
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    // Notices (a cable made, or why not) take the display like a knob reading.
+    this.unlistenCues = cues.listen((cue: Cue) => {
+      if (cue.type === 'notice') this.reading = cue.text;
+    });
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.unlistenCues?.();
+    this.unlistenCues = null;
+  }
 
   protected override willUpdate(_changed: PropertyValues): void {
     const id = this.selected.value;
@@ -478,7 +500,7 @@ export class MonoPanel extends LitElement {
               <h6>${SECTION_LABELS[section.id] ?? NODE_NAMES[id]}</h6>
               <div class="kk">
                 ${section.params.map((param) =>
-                  this.knob(param, this.knobLabel(id, param), values[param] ?? 0, false),
+                  this.knob(param, this.knobLabel(id, param), values[param] ?? 0, false, this.modDepth(id, param)),
                 )}
               </div>
             </section>`,
@@ -488,6 +510,7 @@ export class MonoPanel extends LitElement {
           ${id === 'synth' ? this.synthKeys() : nothing}
           ${id === 'lead' ? this.leadKeys() : nothing}
           ${id === 'drone' ? this.droneKeys() : nothing}
+          ${id === 'lfo' ? this.lfoKeys() : nothing}
           ${id === 'master' ? this.metronomeKeys() : nothing}
           <section>
             <h6>${TEXT.macroSection}</h6>
@@ -524,6 +547,11 @@ export class MonoPanel extends LitElement {
       const range = leadRangeName(octave);
       return scaleLock ? `${name} · ${range} · ${ROOTS[root]} ${SCALE_LABELS[scale]}` : `${name} · ${range}`;
     }
+    if (id === 'dist') return `${name} · ${DIST_TYPE_LABELS[this.distType.value]}`;
+    if (id === 'lfo') {
+      const { shape, sync } = this.lfo.value;
+      return `${name} · ${LFO_SHAPE_LABELS[shape]} · ${lfoRateLabel(this.params.value.lfo.rate ?? 0, sync)}`;
+    }
     if (id !== 'drum') return `${name} · ${NODE_CODES[id]}`;
 
     const { kit } = this.drum.value;
@@ -544,6 +572,42 @@ export class MonoPanel extends LitElement {
     const section = NODE_SPECS[id].sections?.find((s) => s.params.includes(param));
     const group = section ? SECTION_LABELS[section.id] : undefined;
     return group ? `${group} ${label}` : label;
+  }
+
+  /**
+   * How far the LFO moves a knob (knob units each way), or 0: only the node's main knob
+   * (MOD_TARGETS), only while a plugged-in cable runs from the LFO to this node.
+   */
+  private modDepth(id: NodeId, param: string): number {
+    const target = MOD_TARGETS[id];
+    if (!target?.params.includes(param)) return 0;
+    const added = this.added.value;
+    const patched = this.cables.value.some(
+      (cable) => cable.from === 'lfo' && cable.to === id && !cable.cut && added.includes('lfo'),
+    );
+    return patched ? (this.params.value.lfo.depth ?? 0) * target.span : 0;
+  }
+
+  /** LFO: FORMA (four shapes, one lit) and SYNC. */
+  private lfoKeys(): TemplateResult[] {
+    const { shape, sync } = this.lfo.value;
+    return [
+      this.ledKeys('shape', TEXT.shapeSection, 'quad', LFO_SHAPES, LFO_SHAPE_LABELS, shape, (s) => this.onLfoShape(s)),
+      html`<section data-section="sync">
+        <h6>${TEXT.syncSection}</h6>
+        <div class="kk">
+          <button
+            class=${classMap({ pk: true, led: true, on: sync })}
+            id="sync"
+            aria-label=${TEXT.syncHint}
+            aria-pressed=${sync}
+            @click=${this.onLfoSync}
+          >
+            ${TEXT.sync}
+          </button>
+        </div>
+      </section>`,
+    ];
   }
 
   /** DRUM: RNDM makes a new pattern. */
@@ -800,7 +864,7 @@ export class MonoPanel extends LitElement {
 
   /** A row of keys with LEDs, one lit: modes, presets. `layout` picks how they wrap. */
   private ledKeys<T extends string>(
-    name: 'mode' | 'sound',
+    name: 'mode' | 'sound' | 'shape',
     title: string,
     layout: 'modes' | 'quad' | 'trio' | 'stack',
     ids: readonly T[],
@@ -816,6 +880,7 @@ export class MonoPanel extends LitElement {
             class=${classMap({ pk: true, led: true, on: id === current })}
             data-mode=${name === 'mode' ? id : nothing}
             data-preset=${name === 'sound' ? id : nothing}
+            data-shape=${name === 'shape' ? id : nothing}
             aria-label="${title} ${labels[id]}"
             aria-pressed=${id === current}
             @click=${() => pick(id)}
@@ -852,11 +917,12 @@ export class MonoPanel extends LitElement {
     </button>`;
   }
 
-  private knob(param: string, label: string, value: number, big: boolean): TemplateResult {
+  private knob(param: string, label: string, value: number, big: boolean, modDepth = 0): TemplateResult {
     return html`<mono-knob
       data-param=${param}
       .label=${label}
       .value=${value}
+      .modDepth=${modDepth}
       ?big=${big}
       @knob-input=${(event: KnobInputEvent) => this.onKnob(param, label, event.detail.value)}
     ></mono-knob>`;
@@ -891,8 +957,13 @@ export class MonoPanel extends LitElement {
           .value=${this.distType.value}
           @type-change=${this.onType}
         ></mono-type-switch>`;
-      case 'wave':
-        return html`<mono-wave></mono-wave>`;
+      case 'wave': {
+        const knobs = this.params.value.lfo;
+        return html`<mono-lfo-scope
+          .rate=${lfoRate(knobs.rate ?? 0, this.lfo.value.sync, this.bpm.value)}
+          .depth=${knobs.depth ?? 0}
+        ></mono-lfo-scope>`;
+      }
       case 'keys':
         return html`<mono-keys
           .held=${this.live.value.keys}
@@ -947,9 +1018,22 @@ export class MonoPanel extends LitElement {
   private onKnob(param: string, label: string, value: number): void {
     const id = this.selected.value;
     store.setParam(id, param, value);
-    pulse(id, PULSE_MS.knob);
-    this.reading = `${NODE_NAMES[id]} ${this.readingLabel(id, param, label)} ${Math.round(value * 127)}`;
+    // MASTER, DISTORSIÓN and LFO make no sound of their own: no flash for their knobs.
+    if (id !== 'dist' && id !== 'lfo') pulse(id, PULSE_MS.knob);
+    // VELOCIDAD reads as a speed (or a division of the tempo with SYNC).
+    const shown = id === 'lfo' && param === 'rate' ? lfoRateLabel(value, this.lfo.value.sync) : Math.round(value * 127);
+    this.reading = `${NODE_NAMES[id]} ${this.readingLabel(id, param, label)} ${shown}`;
   }
+
+  private onLfoShape(shape: LfoShape): void {
+    store.setLfoShape(shape);
+    this.reading = null;
+  }
+
+  private readonly onLfoSync = (): void => {
+    store.toggleLfoSync();
+    this.reading = null;
+  };
 
   private readonly onRemove = (): void => {
     store.removeNode(this.selected.value);
@@ -1105,7 +1189,7 @@ export class MonoPanel extends LitElement {
 
   private readonly onType = (event: TypeChangeEvent): void => {
     store.setDistType(event.detail.type);
-    pulse('dist', PULSE_MS.type);
+    this.reading = null;
   };
 
   private readonly onTempo = (event: TempoNudgeEvent): void => {

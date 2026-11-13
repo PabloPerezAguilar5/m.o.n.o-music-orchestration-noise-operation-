@@ -9,12 +9,18 @@
 import type { VoiceEvent } from '../../core/voice-events';
 import type { VoiceDsp } from './engine';
 import { ENGINES } from './instruments';
-import { VOICE_PROCESSOR, type VoiceMessage, type VoiceProcessorOptions } from './voice-messages';
+import { CUTOFF_MOD, VOICE_PROCESSOR, type VoiceMessage, type VoiceProcessorOptions } from './voice-messages';
 
 // AudioWorkletGlobalScope, which the DOM typings do not describe.
 declare const sampleRate: number;
 declare const currentTime: number;
 declare function registerProcessor(name: string, processor: new (options: AudioWorkletNodeOptions) => unknown): void;
+/** An AudioParam of the processor (AudioParamDescriptor, which the DOM typings lack). */
+interface ParamDescriptor {
+  readonly name: string;
+  readonly defaultValue?: number;
+  readonly automationRate?: 'a-rate' | 'k-rate';
+}
 declare class AudioWorkletProcessor {
   readonly port: MessagePort;
 }
@@ -23,6 +29,11 @@ declare class AudioWorkletProcessor {
 type Queued = VoiceEvent | { readonly type: 'panic'; readonly time: number; readonly hard: boolean };
 
 class VoiceProcessor extends AudioWorkletProcessor {
+  /** The LFO on CUTOFF, knob units, sample by sample. */
+  static get parameterDescriptors(): ParamDescriptor[] {
+    return [{ name: CUTOFF_MOD, defaultValue: 0, automationRate: 'a-rate' }];
+  }
+
   private readonly dsp: VoiceDsp;
   /** Pending events, sorted by time. */
   private queue: Queued[] = [];
@@ -56,9 +67,10 @@ class VoiceProcessor extends AudioWorkletProcessor {
     else this.dsp.allOff(event.hard);
   }
 
-  process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
+  process(_inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean {
     const out = outputs[0]?.[0];
     if (!out) return true;
+    const mod = parameters[CUTOFF_MOD];
     const frames = out.length;
     let frame = 0;
     // Each event lands on its own sample: render up to it, apply it, carry on.
@@ -66,11 +78,11 @@ class VoiceProcessor extends AudioWorkletProcessor {
       const at = Math.round((this.queue[0]!.time - currentTime) * sampleRate);
       if (at >= frames) break;
       const until = Math.max(frame, Math.min(frames, at));
-      this.dsp.render(out, frame, until);
+      this.dsp.render(out, frame, until, mod);
       frame = until;
       this.apply(this.queue.shift()!);
     }
-    this.dsp.render(out, frame, frames);
+    this.dsp.render(out, frame, frames, mod);
     // Mono voice output: copy to any other channel.
     for (let channel = 1; channel < (outputs[0]?.length ?? 0); channel++) outputs[0]![channel]!.set(out);
     return true;

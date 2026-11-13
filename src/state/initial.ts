@@ -88,6 +88,22 @@ const defaultDroneParams = (): ParamValues => ({
   [MACRO_PARAM]: MACRO_DEFAULT,
 });
 
+/** DISTORSIÓN: a warm drive, fully wet, at unity, no chaos. */
+const defaultDistParams = (): ParamValues => ({
+  drive: 0.45,
+  tone: 0.6,
+  mix: 1,
+  output: 0.5,
+  [MACRO_PARAM]: 0,
+});
+
+/** LFO: about half a cycle a second, moving its targets halfway, no chaos. */
+const defaultLfoParams = (): ParamValues => ({
+  rate: 0.4,
+  depth: 0.5,
+  [MACRO_PARAM]: 0,
+});
+
 /** DRUM knobs are real controls: tone centred (original pitch), volume at unity. */
 const defaultDrumParams = (): ParamValues => {
   const values: Record<string, number> = { [MACRO_PARAM]: MACRO_DEFAULT };
@@ -109,6 +125,8 @@ export function createInitialState(): AppState {
   params.master = defaultMasterParams();
   params.lead = defaultLeadParams();
   params.drone = defaultDroneParams();
+  params.dist = defaultDistParams();
+  params.lfo = defaultLfoParams();
   return {
     added: ['master'],
     selected: 'master',
@@ -142,8 +160,9 @@ export function createInitialState(): AppState {
     },
     lead: { octave: 0, scaleLock: false, hold: false },
     drone: { preset: 'drone', mode: 'touch' },
-    unplugged: [],
+    cables: [],
     distType: 'soft',
+    lfo: { shape: 'sine', sync: false },
     transport: { playing: false, bpm: BPM_DEFAULT, step: -1 },
     metronome: { on: false, volume: 0.7 },
     audio: INITIAL_AUDIO_STATUS,
