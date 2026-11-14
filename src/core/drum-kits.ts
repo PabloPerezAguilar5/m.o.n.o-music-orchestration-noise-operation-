@@ -3,6 +3,9 @@ import { createRng, streamSeed } from './random';
 
 /** public/samples/drums/manifest.json, described in docs/SAMPLES.md. */
 
+/** The kit DRUM starts on, and the one a patch falls back to when its kit is missing. */
+export const DEFAULT_KIT = 'samples808';
+
 export interface DrumKitFile {
   readonly file: string;
   /** DRUM row this file plays on, or null if it is not used by any row. */

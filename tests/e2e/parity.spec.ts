@@ -113,16 +113,35 @@ const hideRouting = (page: Page): Promise<void> =>
     root.append(style);
   });
 
+/**
+ * 16. Patches (stage 8): the MASTER panel gained a PATCH section (SAVE, LOAD, SHARE,
+ *     EXPORT, IMPORT) between CLICK and MACRO. The prototype has none, so the section is
+ *     taken out of the layout (display: none) in the app's screenshots, like the LEAD
+ *     level knob; the rest of the MASTER panel is still compared. Affects initial and
+ *     panel-master-all-nodes.
+ */
+const hidePatchSection = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const root = document.querySelector('mono-app')?.shadowRoot?.querySelector('mono-panel')?.shadowRoot;
+    if (!root?.querySelector('section[data-section="patch"]')) throw new Error('PATCH section not found');
+    const style = document.createElement('style');
+    // !important: the panel's own `.kr section { display: flex }` would win otherwise.
+    style.textContent = 'section[data-section="patch"] { display: none !important; }';
+    root.append(style);
+  });
+
 /** Applied to the app right before the screenshot of the named state. */
 const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   initial: async (page) => {
     await hideMetronome(page);
     await hideLeadLevel(page);
+    await hidePatchSection(page);
   },
   'panel-master-all-nodes': async (page) => {
     await hideMetronome(page);
     await hideLeadLevel(page);
     await hideRouting(page);
+    await hidePatchSection(page);
   },
 };
 

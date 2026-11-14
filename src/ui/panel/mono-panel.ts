@@ -1,5 +1,5 @@
 import { css, html, LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, query, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import {
   BASS_MODES,
@@ -31,6 +31,7 @@ import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
 import { LFO_SHAPES, lfoRate, lfoRateLabel, MOD_TARGETS, type LfoShape } from '../../core/lfo';
 import { clickAt } from '../../core/metronome';
 import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } from '../../core/nodes';
+import { MAX_PATCH_BYTES, MAX_PATCH_NAME } from '../../core/patch';
 import type { Pattern } from '../../core/patterns';
 import { randomSeed } from '../../core/random';
 import { ROOTS } from '../../core/scales';
@@ -53,8 +54,10 @@ import {
   type SynthPattern,
 } from '../../core/synth-patterns';
 import { SYNTH_PRESETS, type SynthPreset } from '../../core/synth-voices';
-import { cues, live, pulse, sliceMonitor, store } from '../../state';
+import { cues, live, patches, pulse, sliceMonitor, store } from '../../state';
 import type { Cue } from '../../state/cues';
+import { PATCH_TEXT } from '../../state/patches';
+import { downloadText, pickFile } from '../patch-files';
 import { BASS_VOICE_IDS, type BassVoice, type SliceState } from '../../state/types';
 import {
   BASS_MODE_LABELS,
@@ -95,6 +98,8 @@ import type { TempoNudgeEvent, TempoSetEvent } from './mono-tempo';
 import './mono-type-switch';
 import type { TypeChangeEvent } from './mono-type-switch';
 import './mono-lfo-scope';
+import './mono-patch-list';
+import type { PatchListActionEvent } from './mono-patch-list';
 import './mono-slicer';
 import type { SliceActionEvent } from './mono-slicer';
 import './mono-xy-pad';
@@ -183,6 +188,24 @@ export class MonoPanel extends LitElement {
         text-shadow: 0 0 8px var(--c);
         white-space: nowrap;
         overflow: hidden;
+      }
+      /* SAVE: the name is typed on the display itself. */
+      .lcd input {
+        width: 100%;
+        padding: 0;
+        margin: 0;
+        border: 0;
+        outline: none;
+        background: transparent;
+        font: inherit;
+        letter-spacing: inherit;
+        color: inherit;
+        text-shadow: inherit;
+        caret-color: var(--c);
+      }
+      .lcd input::placeholder {
+        color: inherit;
+        opacity: 0.45;
       }
       .hz {
         margin-left: auto;
@@ -478,6 +501,11 @@ export class MonoPanel extends LitElement {
   /** Last knob reading, shown on the display until another node is selected. */
   @state() private reading: string | null = null;
   private shownNode: NodeId | null = null;
+  /** PATCH on MASTER: the saved patches, and whether SAVE is asking for a name or LOAD is open. */
+  private readonly patchList = new Selector(this, patches, (s) => s);
+  @state() private naming = false;
+  @state() private loadOpen = false;
+  @query('#patch-name') private nameInput?: HTMLInputElement;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -498,7 +526,16 @@ export class MonoPanel extends LitElement {
     if (id === this.shownNode) return;
     this.shownNode = id;
     this.reading = null;
+    this.naming = false;
+    this.loadOpen = false;
     this.style.setProperty('--c', NODE_COLORS[id]);
+  }
+
+  protected override updated(changed: PropertyValues): void {
+    if (changed.has('naming') && this.naming && this.nameInput) {
+      this.nameInput.focus();
+      this.nameInput.select();
+    }
   }
 
   override render(): TemplateResult {
@@ -514,7 +551,7 @@ export class MonoPanel extends LitElement {
     return html`<div id="panel">
       <div class="hd">
         <span class="plq">${TEXT.plaque}</span>
-        <div class="lcd" id="lcd">${this.displayText(id)}</div>
+        <div class="lcd" id="lcd">${this.naming ? this.nameField() : this.displayText(id)}</div>
         <i class="hz"></i>
         ${id !== 'master'
           ? html`<button id="rm" aria-label=${TEXT.removeNode} @click=${this.onRemove}>✕</button>`
@@ -538,7 +575,7 @@ export class MonoPanel extends LitElement {
           ${id === 'lead' ? this.leadKeys() : nothing}
           ${id === 'drone' ? this.droneKeys() : nothing}
           ${id === 'lfo' ? this.lfoKeys() : nothing}
-          ${id === 'master' ? this.metronomeKeys() : nothing}
+          ${id === 'master' ? [this.metronomeKeys(), this.patchKeys()] : nothing}
           <section>
             <h6>${TEXT.macroSection}</h6>
             <div class="kk">
@@ -702,6 +739,48 @@ export class MonoPanel extends LitElement {
         )}
       </div>
     </section>`;
+  }
+
+  /** MASTER: PATCH, five keys: SAVE, LOAD (lit while its list is open), SHARE, EXPORT, IMPORT. */
+  private patchKeys(): TemplateResult {
+    const key = (
+      action: 'save' | 'load' | 'share' | 'export' | 'import',
+      label: string,
+      hint: string,
+      led = false,
+    ): TemplateResult =>
+      html`<button
+        class=${classMap({ pk: true, led, on: led && this.loadOpen })}
+        id="patch-${action}"
+        data-patch=${action}
+        aria-label=${hint}
+        aria-pressed=${led ? this.loadOpen : nothing}
+        @click=${() => this.onPatchKey(action)}
+      >
+        ${label}
+      </button>`;
+    return html`<section data-section="patch">
+      <h6>${TEXT.patchSection}</h6>
+      <div class="kk trio">
+        ${key('save', TEXT.save, TEXT.saveHint)} ${key('load', TEXT.load, TEXT.loadHint, true)}
+        ${key('share', TEXT.share, TEXT.shareHint)} ${key('export', TEXT.export, TEXT.exportHint)}
+        ${key('import', TEXT.import, TEXT.importHint)}
+      </div>
+    </section>`;
+  }
+
+  /** SAVE: the display becomes a field for the name; Enter saves, Escape (or leaving it) cancels. */
+  private nameField(): TemplateResult {
+    return html`<input
+      id="patch-name"
+      type="text"
+      maxlength=${MAX_PATCH_NAME}
+      autocomplete="off"
+      placeholder=${patches.suggestedName()}
+      aria-label=${TEXT.patchName}
+      @keydown=${this.onNameKey}
+      @blur=${() => (this.naming = false)}
+    />`;
   }
 
   /** MASTER: metronome on/off with an LED that flashes on each beat, and its volume. */
@@ -1045,6 +1124,14 @@ export class MonoPanel extends LitElement {
           @key-up=${this.onKeyUp}
         ></mono-keys>`;
       case 'tempo':
+        if (this.loadOpen) {
+          const { list, persistent } = this.patchList.value;
+          return html`<mono-patch-list
+            .patches=${list}
+            .persistent=${persistent}
+            @patch-action=${this.onPatchListAction}
+          ></mono-patch-list>`;
+        }
         return html`<mono-tempo
           .bpm=${this.bpm.value}
           @tempo-nudge=${this.onTempo}
@@ -1276,6 +1363,89 @@ export class MonoPanel extends LitElement {
 
   private readonly onClickToggle = (): void => {
     store.toggleMetronome();
+  };
+
+  // PATCH ---------------------------------------------------------------------------------------
+
+  private onPatchKey(action: 'save' | 'load' | 'share' | 'export' | 'import'): void {
+    switch (action) {
+      case 'save':
+        this.loadOpen = false;
+        this.naming = true;
+        break;
+      case 'load':
+        this.naming = false;
+        this.loadOpen = !this.loadOpen;
+        if (this.loadOpen) void patches.refresh();
+        break;
+      case 'share':
+        void this.share();
+        break;
+      case 'export': {
+        const { fileName, text } = patches.exportFile(patches.suggestedName());
+        downloadText(fileName, text);
+        break;
+      }
+      case 'import':
+        void this.importFile();
+        break;
+    }
+  }
+
+  private readonly onNameKey = (event: KeyboardEvent): void => {
+    if (event.key === 'Enter') {
+      const name = this.nameInput?.value ?? '';
+      this.naming = false;
+      void patches.save(name);
+    } else if (event.key === 'Escape') {
+      this.naming = false;
+    }
+    // Space must not start or stop the transport while a name is typed.
+    event.stopPropagation();
+  };
+
+  /** SHARE: the link goes to the clipboard; if the browser refuses, to the address bar. */
+  private async share(): Promise<void> {
+    const result = await patches.share(patches.suggestedName());
+    if (!result.ok) return;
+    const url = `${location.origin}${location.pathname}${location.search}${result.link.hash}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.reading = PATCH_TEXT.linkCopied;
+    } catch {
+      location.hash = result.link.hash;
+      this.reading = TEXT.linkInBar;
+    }
+  }
+
+  /** IMPORT: a .mono file through the validator. */
+  private async importFile(): Promise<void> {
+    const file = await pickFile('.mono,application/json,text/plain');
+    if (!file) return;
+    if (file.size > MAX_PATCH_BYTES) {
+      this.reading = TEXT.fileTooBig;
+      return;
+    }
+    patches.importText(await file.text());
+  }
+
+  private readonly onPatchListAction = (event: PatchListActionEvent): void => {
+    const action = event.detail;
+    switch (action.type) {
+      case 'open':
+        this.loadOpen = false;
+        void patches.load(action.id);
+        break;
+      case 'rename':
+        void patches.rename(action.id, action.name);
+        break;
+      case 'delete':
+        void patches.remove(action.id);
+        break;
+      case 'close':
+        this.loadOpen = false;
+        break;
+    }
   };
 
   private readonly onClickVolume = (event: KnobInputEvent): void => {

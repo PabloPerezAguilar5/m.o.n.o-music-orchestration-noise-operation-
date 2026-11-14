@@ -44,7 +44,9 @@ import {
 import type { SynthPreset } from '../core/synth-voices';
 import { BPM_NUDGE, clampBpm } from '../core/transport';
 import { Emitter, type Source } from './emitter';
+import type { Patch } from '../core/patch';
 import { createInitialState } from './initial';
+import { stateFromPatch } from './patch-state';
 import type { AppState, BassVoice, SliceState } from './types';
 
 /** Seeds RNDM tries before settling for one that lights the same steps (practically never). */
@@ -418,6 +420,15 @@ export class Store extends Emitter implements Source<AppState> {
   setAudioStatus(audio: AudioStatus): void {
     if (audio === this.state.audio) return;
     this.update({ audio });
+  }
+
+  /**
+   * Loads a patch (already validated): the whole lasting part of the state at once,
+   * through the same update every action uses, so the audio sees one new scene and
+   * applies its structural changes at the next bar. Playing or stopped stays as it was.
+   */
+  loadPatch(patch: Patch): void {
+    this.update(stateFromPatch(this.state, patch));
   }
 
   private regenerated(seed: number, chaos: number): AppState['drum'] {

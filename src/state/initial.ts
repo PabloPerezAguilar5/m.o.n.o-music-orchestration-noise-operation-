@@ -1,5 +1,6 @@
 import { INITIAL_AUDIO_STATUS } from '../core/audio-scene';
 import { DEFAULT_BASS_PATTERN } from '../core/bass-patterns';
+import { DEFAULT_KIT } from '../core/drum-kits';
 import { INITIAL_SEED, patternFromGrid } from '../core/drum-patterns';
 import { DEFAULT_POSITIONS } from '../core/geometry';
 import {
@@ -18,7 +19,7 @@ import { BPM_DEFAULT } from '../core/transport';
 import type { AppState, ParamValues } from './types';
 
 const MACRO_DEFAULT = 0.2;
-export const INITIAL_KIT = 'samples808';
+export const INITIAL_KIT = DEFAULT_KIT;
 
 /** Knobs start spread across their range, as in the prototype. */
 const defaultParams = (id: NodeId): ParamValues => {
