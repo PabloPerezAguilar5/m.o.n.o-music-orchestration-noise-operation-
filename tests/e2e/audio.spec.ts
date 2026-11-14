@@ -541,6 +541,101 @@ async function addNode(page: Page, id: string): Promise<void> {
   await page.click(`.chip[data-id="${id}"]`);
 }
 
+test.describe('BASS SLICE', () => {
+  test('entra a SLICE, elige un loop, suena por el MASTER y el nodo se enciende', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addBass(page);
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+
+    // VOZ: SYNTH lit; SLICE swaps the knobs and the zone, and keeps the 303 line for later.
+    await expect(page.locator('[data-voice]')).toHaveText(['SYNTH', 'SLICE']);
+    await expect(page.locator('[data-voice].on')).toHaveAttribute('data-voice', 'synth');
+    await page.click('[data-voice="slice"]');
+    await expect(page.locator('[data-voice].on')).toHaveAttribute('data-voice', 'slice');
+    await expect(page.locator('mono-knob')).toHaveCount(5 + 1); // VOLUMEN FILTRO DRIVE PITCH GATE + CAOS
+    await expect(page.locator('.zn > mono-slicer')).toBeVisible();
+    await expect(page.locator('mono-step-grid')).toHaveCount(0);
+
+    // The LINE set is listed, the starting loop (A · C) selected; the display names it once it is in.
+    await expect(page.locator('[data-category]')).toHaveText(['LINE', 'LINE FX', 'ARP', 'SWEEP', 'SWEEP FX']);
+    await expect(page.locator('[data-category].on')).toHaveAttribute('data-category', 'line');
+    await expect(page.locator('.it')).toHaveCount(14);
+    await expect(page.locator('.it.sel')).toHaveText('A · C');
+    const lcd = page.locator('#lcd');
+    await expect(lcd).toHaveText('BASS · SLICE · LINE A · C', { timeout: 10_000 });
+    // A 1-bar loop: only BAR 1; AUTO off.
+    await expect(page.locator('[data-bar="1"]')).toBeDisabled();
+    await expect(page.locator('[data-bar="auto"]')).toBeDisabled();
+
+    // Sound from the loop through the master, and the node lit on the audio clock.
+    await expect.poll(() => peakLevel(page), { timeout: 10_000 }).toBeGreaterThan(0.01);
+    await expect(page.locator('#nd-bass.on')).toHaveCount(1, { timeout: 4000 });
+    // The step keys show the original order: piece N on step N.
+    await expect(page.locator('.st[data-step]')).toHaveText(Array.from({ length: 16 }, (_, i) => String(i + 1)));
+
+    // Another set and loop: listed, highlighted, named on the display; 4 bars open BAR and AUTO.
+    await page.click('[data-category="arp"]');
+    await expect(page.locator('.it')).toHaveCount(14);
+    await page.click('[data-set="arp"][data-loop="b-128-e.wav"]');
+    await expect(page.locator('.it.sel')).toHaveText('B · E');
+    await expect(lcd).toHaveText('BASS · SLICE · ARP B · E', { timeout: 10_000 });
+    await expect(page.locator('[data-bar="3"]')).toBeEnabled();
+    await page.click('[data-bar="auto"]');
+    await expect(page.locator('[data-bar="auto"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(lcd).toHaveText('BASS BAR AUTO');
+
+    // Pick a piece on the wave, put it on a step; the same again switches the step off.
+    await page.click('.sl[data-slice="4"]');
+    await expect(page.locator('.sl[data-slice="4"]')).toHaveAttribute('aria-pressed', 'true');
+    const step = page.locator('.st[data-step="0"]');
+    await step.click();
+    await expect(step).toHaveText('5');
+    await expect(step).toHaveClass(/\ba\b/);
+    await step.click();
+    await expect(step).not.toHaveClass(/\ba\b/);
+
+    // DICE and its styles, REVERSE and SYNC.
+    const pieces = () => page.locator('.st[data-step]').evaluateAll((keys) => keys.map((k) => `${k.classList.contains('a') ? 1 : 0}${k.textContent?.trim()}`).join(' '));
+    const before = await pieces();
+    await page.click('#dice');
+    expect(await pieces()).not.toBe(before);
+    await expect(page.locator('[data-mode]')).toHaveText(['ORIGINAL', 'SHUFFLE', 'STUTTER', 'CHAOS']);
+    await page.click('[data-mode="shuffle"]');
+    await expect(lcd).toHaveText('BASS MODO SHUFFLE');
+    await page.click('#reverse');
+    await expect(page.locator('#reverse')).toHaveAttribute('aria-pressed', 'true');
+    await page.click('#slice-sync');
+    await expect(page.locator('#slice-sync')).toHaveAttribute('aria-pressed', 'false');
+    await page.waitForTimeout(2200); // the new loop and pattern are in from the next bar
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+
+    // Back to SYNTH: the 303 grid is where it was.
+    await page.click('[data-voice="synth"]');
+    await expect(page.locator('mono-step-grid .st')).toHaveCount(7 * 16);
+    await expect(page.locator('mono-knob')).toHaveCount(4 + 1);
+    expect(errors).toEqual([]);
+  });
+
+  test('un loop que falla se avisa en el display y el resto sigue andando', async ({ page }) => {
+    const errors = watchErrors(page, [/Failed to load resource.*404/]);
+    await page.route('**/samples/bass/line/a-128-c.wav', (route) => route.fulfill({ status: 404 }));
+    await page.goto('/');
+    await addBass(page);
+    await page.click('[data-voice="slice"]');
+    await expect(page.locator('#lcd')).toHaveText('BASS · ERROR a-128-c.wav', { timeout: 10_000 });
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+    // The clock keeps running, and another loop plays.
+    const column = () => page.locator('.st.ph').first().getAttribute('data-step');
+    const first = await column();
+    await expect.poll(column).not.toBe(first);
+    await page.click('[data-set="line"][data-loop="a-128-d.wav"]');
+    await expect(page.locator('#lcd')).toHaveText('BASS · SLICE · LINE A · D', { timeout: 10_000 });
+    await expect.poll(() => peakLevel(page), { timeout: 10_000 }).toBeGreaterThan(0.01);
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe('SYNTH', () => {
   test('suena con acordes, se enciende con el reloj y el cable se corta y reconecta en vivo', async ({ page }) => {
     const errors = watchErrors(page);

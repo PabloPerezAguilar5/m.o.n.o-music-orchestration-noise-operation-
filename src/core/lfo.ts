@@ -74,7 +74,8 @@ export interface ModTarget {
 
 export const MOD_TARGETS: Readonly<Partial<Record<NodeId, ModTarget>>> = {
   synth: { params: ['cutoff'], span: 0.5 },
-  bass: { params: ['cutoff'], span: 0.5 },
+  // The 303's CUTOFF, or FILTRO in SLICE mode: whichever voice is playing.
+  bass: { params: ['cutoff', 'sliceFilter'], span: 0.5 },
   lead: { params: ['cutoff'], span: 0.5 },
   drone: { params: ['filter'], span: 0.5 },
   dist: { params: ['drive'], span: 0.5 },

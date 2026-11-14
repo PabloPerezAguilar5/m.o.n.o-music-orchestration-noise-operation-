@@ -19,6 +19,18 @@ import {
   type ConnectResult,
 } from '../core/routing';
 import { SCALE_IDS } from '../core/scales';
+import {
+  assignSlice,
+  EMPTY_SLICE_PATTERN,
+  generateSlicePattern,
+  MAX_LOOP_BARS,
+  sameLoop,
+  sameSlicePattern,
+  type SliceBar,
+  type SliceCategory,
+  type SliceDiceMode,
+  type SliceLoopRef,
+} from '../core/slice';
 import { EMPTY_DRUM_PATTERN, generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
 import { MACRO_PARAM, type DistType, type NodeId } from '../core/nodes';
@@ -33,7 +45,7 @@ import type { SynthPreset } from '../core/synth-voices';
 import { BPM_NUDGE, clampBpm } from '../core/transport';
 import { Emitter, type Source } from './emitter';
 import { createInitialState } from './initial';
-import type { AppState } from './types';
+import type { AppState, BassVoice, SliceState } from './types';
 
 /** Seeds RNDM tries before settling for one that lights the same steps (practically never). */
 const RANDOMIZE_ATTEMPTS = 16;
@@ -117,7 +129,10 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ positions: { ...this.state.positions, [id]: clampNodePosition(point) } });
   }
 
-  /** Sets a knob. On DRUM, BASS and SYNTH, CAOS regenerates the pattern from the current seed. */
+  /**
+   * Sets a knob. On DRUM, BASS and SYNTH, CAOS regenerates the pattern from the current
+   * seed (on BASS, the pattern of the voice that is playing).
+   */
   setParam(id: NodeId, param: string, value: number): void {
     const current = this.state.params[id];
     if (!(param in current)) return;
@@ -128,7 +143,11 @@ export class Store extends Emitter implements Source<AppState> {
       this.update({ params, drum: this.regenerated(this.state.drum.seed, next) });
     } else if (id === 'bass' && param === MACRO_PARAM) {
       const { bass } = this.state;
-      this.update({ params, bass: this.regeneratedBass(bass.mode, bass.seed, next) });
+      if (bass.voice === 'slice') {
+        this.update({ params, bass: { ...bass, slice: this.regeneratedSlice(bass.slice.mode, bass.slice.seed, next) } });
+      } else {
+        this.update({ params, bass: this.regeneratedBass(bass.mode, bass.seed, next) });
+      }
     } else if (id === 'synth' && param === MACRO_PARAM) {
       const { synth } = this.state;
       this.update({ params, synth: this.regeneratedSynth(synth.mode, synth.seed, next) });
@@ -159,8 +178,11 @@ export class Store extends Emitter implements Source<AppState> {
    * DICE fill it again.
    */
   clearPattern(id: NodeId): void {
+    const { bass } = this.state;
     if (id === 'drum') this.update({ drum: { ...this.state.drum, pattern: EMPTY_DRUM_PATTERN } });
-    else if (id === 'bass') this.update({ bass: { ...this.state.bass, pattern: EMPTY_BASS_PATTERN } });
+    else if (id === 'bass' && bass.voice === 'slice') {
+      this.update({ bass: { ...bass, slice: { ...bass.slice, pattern: EMPTY_SLICE_PATTERN } } });
+    } else if (id === 'bass') this.update({ bass: { ...bass, pattern: EMPTY_BASS_PATTERN } });
     else if (id === 'synth') this.update({ synth: { ...this.state.synth, pattern: EMPTY_SYNTH_PATTERN } });
   }
 
@@ -241,6 +263,91 @@ export class Store extends Emitter implements Source<AppState> {
       seed,
       generation: bass.generation + 1,
       pattern: generateBassPattern(mode, seed, chaos),
+    };
+  }
+
+  // BASS: SLICE ---------------------------------------------------------------------------------
+
+  /** SYNTH or SLICE. Each voice keeps its pattern; the change sounds from the next bar. */
+  setBassVoice(voice: BassVoice): void {
+    const { bass } = this.state;
+    if (bass.voice === voice) return;
+    this.update({ bass: { ...bass, voice } });
+  }
+
+  /** Which set the panel lists. The loop playing stays until one is picked. */
+  setSliceCategory(category: SliceCategory): void {
+    const { bass } = this.state;
+    if (bass.slice.category === category) return;
+    this.update({ bass: { ...bass, slice: { ...bass.slice, category } } });
+  }
+
+  /** Picks the loop whose pieces play (and shows its set). It switches in at the next bar. */
+  selectLoop(loop: SliceLoopRef): void {
+    const { bass } = this.state;
+    if (sameLoop(bass.slice.loop, loop) && bass.slice.category === loop.set) return;
+    // Only where it is: its tempo and bars come from the manifest when it is played.
+    const ref: SliceLoopRef = { set: loop.set, file: loop.file };
+    this.update({ bass: { ...bass, slice: { ...bass.slice, loop: ref, category: loop.set } } });
+  }
+
+  /** BAR 1..4 (0-based here) or AUTO. */
+  setSliceBar(bar: SliceBar): void {
+    const { bass } = this.state;
+    if (bar !== 'auto' && (!Number.isInteger(bar) || bar < 0 || bar >= MAX_LOOP_BARS)) return;
+    if (bass.slice.bar === bar) return;
+    this.update({ bass: { ...bass, slice: { ...bass.slice, bar } } });
+  }
+
+  toggleSliceSync(): void {
+    const { bass } = this.state;
+    this.update({ bass: { ...bass, slice: { ...bass.slice, sync: !bass.slice.sync } } });
+  }
+
+  toggleSliceReverse(): void {
+    const { bass } = this.state;
+    this.update({ bass: { ...bass, slice: { ...bass.slice, reverse: !bass.slice.reverse } } });
+  }
+
+  /** Hand edit: puts the picked piece on a step, or switches the step off (slice.ts). Keeps the generation. */
+  assignSliceStep(step: number, slice: number): void {
+    const { bass } = this.state;
+    const pattern = assignSlice(bass.slice.pattern, step, slice);
+    if (pattern === bass.slice.pattern) return;
+    this.update({ bass: { ...bass, slice: { ...bass.slice, pattern } } });
+  }
+
+  /** Picks a DICE style and plays a pattern in it from the current seed. */
+  setSliceMode(mode: SliceDiceMode): void {
+    const { bass } = this.state;
+    if (bass.slice.mode === mode) return;
+    const chaos = this.state.params.bass[MACRO_PARAM] ?? 0;
+    this.update({ bass: { ...bass, slice: this.regeneratedSlice(mode, bass.slice.seed, chaos) } });
+  }
+
+  /** DICE: a pattern in the current style from a new seed, always different from the one playing. */
+  randomizeSlice(nextSeed: () => number): void {
+    const { bass } = this.state;
+    const chaos = this.state.params.bass[MACRO_PARAM] ?? 0;
+    let next = this.regeneratedSlice(bass.slice.mode, nextSeed() >>> 0, chaos);
+    for (
+      let attempt = 1;
+      attempt < RANDOMIZE_ATTEMPTS && sameSlicePattern(next.pattern, bass.slice.pattern);
+      attempt++
+    ) {
+      next = this.regeneratedSlice(bass.slice.mode, nextSeed() >>> 0, chaos);
+    }
+    this.update({ bass: { ...bass, slice: next } });
+  }
+
+  private regeneratedSlice(mode: SliceDiceMode, seed: number, chaos: number): SliceState {
+    const { slice } = this.state.bass;
+    return {
+      ...slice,
+      mode,
+      seed,
+      generation: slice.generation + 1,
+      pattern: generateSlicePattern(mode, seed, chaos),
     };
   }
 
@@ -341,11 +448,11 @@ export class Store extends Emitter implements Source<AppState> {
     this.update({ transport: { ...transport, playing: !transport.playing, step: -1 } });
   }
 
-  /** Playhead position reported by the backend; ignored while stopped. */
-  setStep(step: number): void {
+  /** Playhead position (and the loop bar SLICE plays from) reported by the backend; ignored while stopped. */
+  setStep(step: number, sliceBar = this.state.transport.sliceBar): void {
     const { transport } = this.state;
-    if (!transport.playing || transport.step === step) return;
-    this.update({ transport: { ...transport, step } });
+    if (!transport.playing || (transport.step === step && transport.sliceBar === sliceBar)) return;
+    this.update({ transport: { ...transport, step, sliceBar } });
   }
 
   // LEAD ----------------------------------------------------------------------------------------

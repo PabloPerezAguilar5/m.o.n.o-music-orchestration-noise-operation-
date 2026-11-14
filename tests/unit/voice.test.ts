@@ -7,6 +7,7 @@ import { ENGINES } from '../../src/audio/voice/instruments';
 import type { BassScene, SynthScene } from '../../src/core/audio-scene';
 import { DEFAULT_BASS_PATTERN } from '../../src/core/bass-patterns';
 import { midiToHz } from '../../src/core/scales';
+import { DEFAULT_SLICE_PATTERN } from '../../src/core/slice';
 import { DEFAULT_SYNTH_PATTERN } from '../../src/core/synth-patterns';
 import { SYNTH_PRESETS } from '../../src/core/synth-voices';
 
@@ -23,6 +24,20 @@ const peak = (x: Float32Array) => x.reduce((max, v) => Math.max(max, Math.abs(v)
 const brightness = (x: Float32Array) => rms(x.subarray(1).map((v, i) => v - x[i]!)) / rms(x);
 
 const bassScene = (over: Partial<BassScene> = {}): BassScene => ({
+  voice: 'synth',
+  slice: {
+    generation: 0,
+    pattern: DEFAULT_SLICE_PATTERN,
+    loop: null,
+    bar: 0,
+    sync: true,
+    reverse: false,
+    volume: 0.8,
+    filter: 1,
+    drive: 0,
+    pitch: 0.5,
+    gate: 1,
+  },
   generation: 0,
   pattern: DEFAULT_BASS_PATTERN,
   mode: 'pulse',

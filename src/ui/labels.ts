@@ -1,6 +1,8 @@
 import type { BassMode } from '../core/bass-patterns';
 import type { DroneMode, DronePreset } from '../core/drone';
 import { DEGREES, degreeName, ROOTS, SYNTH_STEPS, synthMidi, type ScaleId } from '../core/scales';
+import type { BassLoop, SliceCategory, SliceDiceMode, SliceParam } from '../core/slice';
+import type { BassVoice } from '../state/types';
 import type { SynthMode } from '../core/synth-patterns';
 import type { SynthPreset } from '../core/synth-voices';
 import type { LfoShape } from '../core/lfo';
@@ -117,6 +119,44 @@ export const BASS_MODE_LABELS: Readonly<Record<BassMode, string>> = {
   chaos: 'CHAOS',
 };
 
+/** BASS voices: the 303 or pieces of a loop. */
+export const BASS_VOICE_LABELS: Readonly<Record<BassVoice, string>> = {
+  synth: 'SYNTH',
+  slice: 'SLICE',
+};
+
+/** SLICE knob captions, by param id. */
+export const SLICE_KNOB_LABELS: Readonly<Record<SliceParam, string>> = {
+  sliceVolume: 'VOLUMEN',
+  sliceFilter: 'FILTRO',
+  sliceDrive: 'DRIVE',
+  slicePitch: 'PITCH',
+  sliceGate: 'GATE',
+};
+
+/** The loop folders of public/samples/bass, as the panel names them. */
+export const SLICE_CATEGORY_LABELS: Readonly<Record<SliceCategory, string>> = {
+  line: 'LINE',
+  'line-fx': 'LINE FX',
+  arp: 'ARP',
+  sweep: 'SWEEP',
+  'sweep-fx': 'SWEEP FX',
+};
+
+export const SLICE_MODE_LABELS: Readonly<Record<SliceDiceMode, string>> = {
+  original: 'ORIGINAL',
+  shuffle: 'SHUFFLE',
+  stutter: 'STUTTER',
+  chaos: 'CHAOS',
+};
+
+/** A loop in the list and on the display: its variant and tonic, "A · C". */
+export const loopLabel = (loop: BassLoop): string => `${loop.variant.toUpperCase()} · ${loop.key}`;
+
+/** PITCH on the display: whole semitones with their sign, "+3", "0", "−12". */
+export const pitchLabel = (semitones: number): string =>
+  semitones > 0 ? `+${semitones}` : semitones < 0 ? `−${-semitones}` : '0';
+
 /** Headers of knob groups (NODE_SPECS[id].sections). */
 export const SECTION_LABELS: Readonly<Record<string, string>> = {
   kick: 'KCK',
@@ -222,6 +262,26 @@ export const TEXT = {
   padNote: 'NOTA',
   padMotion: 'FILTRO · MOVIMIENTO',
   missing: 'FALTA',
+  voiceSection: 'VOZ',
+  voiceHint: 'Voz',
+  loopHint: 'Loop',
+  categoryHint: 'Categoría',
+  loopPreviewHint: 'Loop (tocá para escuchar)',
+  bar: 'BAR',
+  barHint: 'Compás del loop del que salen los pedazos',
+  barAuto: 'AUTO',
+  barAutoHint: 'AUTO: avanza un compás cada vuelta del patrón',
+  sliceSync: 'SYNC',
+  sliceSyncHint: 'Sync: el loop sigue el tempo del MASTER, el tono acompaña',
+  reverse: 'REVERSE',
+  reverseHint: 'Reverse: todos los pedazos al revés',
+  waveRow: 'ONDA',
+  stepRow: 'PASO',
+  sliceHint: 'Pedazo',
+  stepHint: 'Paso',
+  loading: 'CARGANDO',
+  loadError: 'ERROR',
+  noLoops: 'SIN LOOPS',
   audioBlocked: 'AUDIO BLOQUEADO · TOCÁ ▶',
   audioUnavailable: 'SIN AUDIO EN ESTE NAVEGADOR',
 } as const;

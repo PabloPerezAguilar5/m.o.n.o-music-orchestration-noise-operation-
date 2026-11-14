@@ -35,6 +35,15 @@ import type { Pattern } from '../../core/patterns';
 import { randomSeed } from '../../core/random';
 import { ROOTS } from '../../core/scales';
 import {
+  findLoop,
+  loopId,
+  pitchSemitones,
+  SLICE_DICE_MODES,
+  SLICE_PARAMS,
+  type SliceDiceMode,
+  type SliceParam,
+} from '../../core/slice';
+import {
   gridFromSynthPattern,
   synthDimmedCells,
   SYNTH_DUR_ROW,
@@ -44,11 +53,18 @@ import {
   type SynthPattern,
 } from '../../core/synth-patterns';
 import { SYNTH_PRESETS, type SynthPreset } from '../../core/synth-voices';
-import { cues, live, pulse, store } from '../../state';
+import { cues, live, pulse, sliceMonitor, store } from '../../state';
 import type { Cue } from '../../state/cues';
+import { BASS_VOICE_IDS, type BassVoice, type SliceState } from '../../state/types';
 import {
   BASS_MODE_LABELS,
+  BASS_VOICE_LABELS,
   bassRowLabels,
+  loopLabel,
+  pitchLabel,
+  SLICE_CATEGORY_LABELS,
+  SLICE_KNOB_LABELS,
+  SLICE_MODE_LABELS,
   DIST_TYPE_LABELS,
   DRONE_MODE_LABELS,
   DRONE_PRESET_LABELS,
@@ -79,6 +95,8 @@ import type { TempoNudgeEvent, TempoSetEvent } from './mono-tempo';
 import './mono-type-switch';
 import type { TypeChangeEvent } from './mono-type-switch';
 import './mono-lfo-scope';
+import './mono-slicer';
+import type { SliceActionEvent } from './mono-slicer';
 import './mono-xy-pad';
 import type { PadDot, PadDownEvent, PadUpEvent } from './mono-xy-pad';
 
@@ -449,6 +467,11 @@ export class MonoPanel extends LitElement {
   private readonly bass = new Selector(this, store, (s) => s.bass);
   /** On/off view of the BASS pattern, recomputed only when the pattern changes. */
   private bassGrid: { pattern: BassPattern; slides: boolean; grid: Pattern; dimmed: Pattern } | null = null;
+  /** SLICE: the shapes of the decoded loops, and the loop bar playing (under AUTO). */
+  private readonly sliceWaves = new Selector(this, sliceMonitor, (s) => s);
+  private readonly sliceBar = new Selector(this, store, (s) => s.transport.sliceBar);
+  /** SLICE: the piece picked on the wave, to put on steps. Not state: a hand on the panel. */
+  @state() private pickedSlice = 0;
   /** On/off view of the DRUM pattern, recomputed only when the pattern changes. */
   private drumGrid: { pattern: DrumPattern; grid: Pattern } | null = null;
 
@@ -482,7 +505,11 @@ export class MonoPanel extends LitElement {
     const id = this.selected.value;
     const spec = NODE_SPECS[id];
     const values = this.params.value[id];
-    const sections: readonly ParamSection[] = spec.sections ?? [{ id, params: spec.params }];
+    // BASS in SLICE mode shows the SLICE knobs instead of the 303's.
+    const sections: readonly ParamSection[] =
+      id === 'bass' && this.bass.value.voice === 'slice'
+        ? [{ id, params: SLICE_PARAMS }]
+        : (spec.sections ?? [{ id, params: spec.params }]);
 
     return html`<div id="panel">
       <div class="hd">
@@ -535,7 +562,11 @@ export class MonoPanel extends LitElement {
     if (audio.state === 'unavailable') return TEXT.audioUnavailable;
     const name = NODE_NAMES[id];
     const { root, scale } = this.key.value;
-    if (id === 'bass') return `${name} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
+    if (id === 'bass') {
+      const { voice, slice } = this.bass.value;
+      if (voice === 'slice') return this.sliceDisplay(name, slice);
+      return `${name} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
+    }
     if (id === 'synth') {
       return `${name} · ${SYNTH_PRESET_LABELS[this.synth.value.preset]} · ${ROOTS[root]} ${SCALE_LABELS[scale]}`;
     }
@@ -563,7 +594,25 @@ export class MonoPanel extends LitElement {
     return `${name} · ${kitLabel(kit)}`;
   }
 
+  /**
+   * SLICE on the display: its loop (set, variant and tonic), or where it stands: the
+   * manifest or the loop still loading, or a loop that failed (the rest keeps playing).
+   */
+  private sliceDisplay(name: string, slice: SliceState): string {
+    const audio = this.audio.value;
+    const manifestMissing = audio.missing['bass'] ?? [];
+    if (manifestMissing.length > 0) return `${name} · ${TEXT.missing} ${manifestMissing[0]}`;
+    const id = loopId(slice.loop);
+    const state = audio.loopStates[id];
+    if (state === 'failed') return `${name} · ${TEXT.loadError} ${slice.loop.file}`;
+    if (audio.loops === null || state === 'loading') return `${name} · ${TEXT.loading} ${slice.loop.file}`;
+    const loop = findLoop(audio.loops, slice.loop);
+    if (!loop) return `${name} · ${TEXT.missing} ${slice.loop.file}`;
+    return `${name} · ${BASS_VOICE_LABELS.slice} · ${SLICE_CATEGORY_LABELS[loop.set]} ${loopLabel(loop)}`;
+  }
+
   private knobLabel(id: NodeId, param: string): string {
+    if (id === 'bass' && param in SLICE_KNOB_LABELS) return SLICE_KNOB_LABELS[param as SliceParam];
     return KNOB_LABELS[id][NODE_SPECS[id].params.indexOf(param)] ?? param;
   }
 
@@ -719,12 +768,32 @@ export class MonoPanel extends LitElement {
   }
 
   /**
-   * BASS: OSC (wave and sub), ESCALA (the shared key), MODO (fck-synth's five modes)
-   * and DICE, which makes a new pattern in the current mode.
+   * BASS: VOZ (SYNTH or SLICE), then the voice's own keys. SYNTH: OSC (wave and sub),
+   * ESCALA (the shared key), MODO (fck-synth's five modes) and DICE, which makes a new
+   * pattern in the current mode. SLICE: MODO (its DICE styles) and DICE.
    */
   private bassKeys(): TemplateResult[] {
-    const { wave, sub, mode } = this.bass.value;
+    const { wave, sub, mode, voice, slice } = this.bass.value;
+    const voiceKeys = this.ledKeys(
+      'voice',
+      TEXT.voiceSection,
+      'stack',
+      BASS_VOICE_IDS,
+      BASS_VOICE_LABELS,
+      voice,
+      (v) => this.onBassVoice(v),
+    );
+    if (voice === 'slice') {
+      return [
+        voiceKeys,
+        this.ledKeys('mode', TEXT.modeSection, 'quad', SLICE_DICE_MODES, SLICE_MODE_LABELS, slice.mode, (m) =>
+          this.onSliceMode(m),
+        ),
+        this.diceSection(this.onSliceDice, this.clearKey()),
+      ];
+    }
     return [
+      voiceKeys,
       html`<section data-section="osc">
         <h6>${TEXT.oscSection}</h6>
         <div class="kk stack">
@@ -864,7 +933,7 @@ export class MonoPanel extends LitElement {
 
   /** A row of keys with LEDs, one lit: modes, presets. `layout` picks how they wrap. */
   private ledKeys<T extends string>(
-    name: 'mode' | 'sound' | 'shape',
+    name: 'mode' | 'sound' | 'shape' | 'voice',
     title: string,
     layout: 'modes' | 'quad' | 'trio' | 'stack',
     ids: readonly T[],
@@ -881,6 +950,7 @@ export class MonoPanel extends LitElement {
             data-mode=${name === 'mode' ? id : nothing}
             data-preset=${name === 'sound' ? id : nothing}
             data-shape=${name === 'shape' ? id : nothing}
+            data-voice=${name === 'voice' ? id : nothing}
             aria-label="${title} ${labels[id]}"
             aria-pressed=${id === current}
             @click=${() => pick(id)}
@@ -932,6 +1002,7 @@ export class MonoPanel extends LitElement {
   private zone(id: NodeId): TemplateResult {
     switch (NODE_SPECS[id].zone) {
       case 'sequencer': {
+        if (id === 'bass' && this.bass.value.voice === 'slice') return this.slicer();
         const { grid, dimmed, split } = this.gridOf(id);
         return html`<mono-step-grid
           .rows=${this.rowLabels(id)}
@@ -983,6 +1054,32 @@ export class MonoPanel extends LitElement {
     }
   }
 
+  /** BASS in SLICE mode: the loop list, BAR, SYNC, REVERSE, the wave and the steps. */
+  private slicer(): TemplateResult {
+    const { slice } = this.bass.value;
+    const audio = this.audio.value;
+    const loop = audio.loops ? findLoop(audio.loops, slice.loop) : null;
+    const id = loopId(slice.loop);
+    const bars = loop?.bars ?? 1;
+    const shownBar = slice.bar === 'auto' ? this.sliceBar.value : slice.bar;
+    return html`<mono-slicer
+      .loops=${audio.loops}
+      .category=${slice.category}
+      .loop=${slice.loop}
+      .loopState=${audio.loopStates[id] ?? 'none'}
+      .bars=${bars}
+      .bar=${slice.bar}
+      .shownBar=${Math.min(shownBar, bars - 1)}
+      .sync=${slice.sync}
+      .reverse=${slice.reverse}
+      .pattern=${slice.pattern}
+      .selected=${this.pickedSlice}
+      .step=${this.step.value}
+      .peaks=${this.sliceWaves.value.get(id)?.peaks ?? null}
+      @slice-action=${this.onSliceAction}
+    ></mono-slicer>`;
+  }
+
   /** DRONE layers as the pad draws them, each with its note. */
   private padDots(): PadDot[] {
     const { root, scale } = this.key.value;
@@ -1020,8 +1117,13 @@ export class MonoPanel extends LitElement {
     store.setParam(id, param, value);
     // MASTER, DISTORSIÓN and LFO make no sound of their own: no flash for their knobs.
     if (id !== 'dist' && id !== 'lfo') pulse(id, PULSE_MS.knob);
-    // VELOCIDAD reads as a speed (or a division of the tempo with SYNC).
-    const shown = id === 'lfo' && param === 'rate' ? lfoRateLabel(value, this.lfo.value.sync) : Math.round(value * 127);
+    // VELOCIDAD reads as a speed (or a division of the tempo with SYNC); PITCH, in semitones.
+    const shown =
+      id === 'lfo' && param === 'rate'
+        ? lfoRateLabel(value, this.lfo.value.sync)
+        : id === 'bass' && param === 'slicePitch'
+          ? pitchLabel(pitchSemitones(value))
+          : Math.round(value * 127);
     this.reading = `${NODE_NAMES[id]} ${this.readingLabel(id, param, label)} ${shown}`;
   }
 
@@ -1090,6 +1192,58 @@ export class MonoPanel extends LitElement {
   private readonly onBassDice = (): void => {
     store.randomizeBass(randomSeed);
     this.reading = null;
+  };
+
+  /** The display shows the voice's own line right away (SLICE: its loop, or that it is loading). */
+  private onBassVoice(voice: BassVoice): void {
+    store.setBassVoice(voice);
+    this.reading = null;
+  }
+
+  private onSliceMode(mode: SliceDiceMode): void {
+    store.setSliceMode(mode);
+    this.reading = `${NODE_NAMES.bass} ${TEXT.modeSection} ${SLICE_MODE_LABELS[mode]}`;
+  }
+
+  private readonly onSliceDice = (): void => {
+    store.randomizeSlice(randomSeed);
+    this.reading = null;
+  };
+
+  /** A touch on the SLICE zone: the store keeps the setting; loops and pieces are heard at once. */
+  private readonly onSliceAction = (event: SliceActionEvent): void => {
+    const action = event.detail;
+    switch (action.type) {
+      case 'category':
+        store.setSliceCategory(action.category);
+        this.reading = null;
+        break;
+      case 'loop':
+        store.selectLoop(action.loop);
+        cues.send({ type: 'loop-preview', loop: action.loop });
+        this.reading = null;
+        break;
+      case 'bar':
+        store.setSliceBar(action.bar);
+        this.reading = `${NODE_NAMES.bass} ${TEXT.bar} ${action.bar === 'auto' ? TEXT.barAuto : action.bar + 1}`;
+        break;
+      case 'sync':
+        store.toggleSliceSync();
+        break;
+      case 'reverse':
+        store.toggleSliceReverse();
+        pulse('bass', PULSE_MS.type);
+        break;
+      case 'slice':
+        this.pickedSlice = action.slice;
+        cues.send({ type: 'slice-preview', slice: action.slice });
+        pulse('bass', PULSE_MS.step);
+        break;
+      case 'step':
+        store.assignSliceStep(action.step, this.pickedSlice);
+        pulse('bass', PULSE_MS.step);
+        break;
+    }
   };
 
   private onSynthMode(mode: SynthMode): void {

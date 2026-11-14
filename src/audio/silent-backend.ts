@@ -6,9 +6,10 @@ import type { NodeId } from '../core/nodes';
 import { reaches } from '../core/routing';
 import { bassMidi, synthMidi } from '../core/scales';
 import { LookaheadScheduler } from '../core/scheduler';
+import { SliceSequencer, type BassLoop, type SliceEvent } from '../core/slice';
 import { SynthSequencer } from '../core/synth-patterns';
 import type { VoiceEvent } from '../core/voice-events';
-import type { AudioBackend, LfoTraceListener, StatusListener, StepListener } from './backend';
+import type { AudioBackend, LfoTraceListener, SliceWaveListener, StatusListener, StepListener } from './backend';
 
 /**
  * Soundless backend for tests. Nothing runs on its own: the test moves time with
@@ -25,9 +26,15 @@ export class SilentBackend implements AudioBackend {
   /** Voice events, as the real backend would send them to the worklets. */
   readonly bassEvents: VoiceEvent[] = [];
   readonly synthEvents: VoiceEvent[] = [];
+  /** Pieces BASS SLICE played, with the loop they came from. */
+  readonly sliceEvents: (SliceEvent & { readonly loop: BassLoop })[] = [];
+  /** Loops and pieces asked to be heard, in order. */
+  readonly loopPreviews: BassLoop[] = [];
+  readonly slicePreviews: number[] = [];
   /** Live events (LEAD notes, DRONE layers), in the order they were played. */
   readonly live: LiveEvent[] = [];
   private readonly bassSequencer = new BassSequencer();
+  private readonly sliceSequencer = new SliceSequencer();
   private readonly synthSequencer = new SynthSequencer();
   unlocks = 0;
   private readonly scheduler = new LookaheadScheduler();
@@ -52,6 +59,7 @@ export class SilentBackend implements AudioBackend {
     this.listener = null;
     this.scheduler.stop(this.now);
     this.bassSequencer.reset();
+    this.sliceSequencer.reset();
     this.synthSequencer.reset();
   }
 
@@ -66,6 +74,18 @@ export class SilentBackend implements AudioBackend {
 
   audition(kit: string): void {
     this.auditions.push(kit);
+  }
+
+  previewLoop(loop: BassLoop): void {
+    this.loopPreviews.push(loop);
+  }
+
+  previewSlice(slice: number): void {
+    this.slicePreviews.push(slice);
+  }
+
+  onSliceWave(_listener: SliceWaveListener): () => void {
+    return () => undefined;
   }
 
   onStatus(listener: StatusListener): () => void {
@@ -94,7 +114,18 @@ export class SilentBackend implements AudioBackend {
       if (scene && heard('drum') && scene.drum.pattern.some((row) => (row[step]?.length ?? 0) > 0)) {
         sounding.push('drum');
       }
-      if (scene && heard('bass')) {
+      let sliceBar: number | undefined;
+      if (scene && heard('bass') && scene.bass.voice === 'slice') {
+        const { pattern, loop, bar, reverse } = scene.bass.slice;
+        if (loop) {
+          const event = this.sliceSequencer.step(pattern, step, loop.bars, bar, reverse, time, duration);
+          sliceBar = this.sliceSequencer.currentBar;
+          if (event) {
+            this.sliceEvents.push({ ...event, loop });
+            sounding.push('bass');
+          }
+        }
+      } else if (scene && heard('bass')) {
         const { pattern, root, scale, slides } = scene.bass;
         const events = this.bassSequencer.step(pattern, step, time, duration, (d) => bassMidi(root, scale, d), 1, slides);
         this.bassEvents.push(...events);
@@ -106,7 +137,7 @@ export class SilentBackend implements AudioBackend {
         this.synthEvents.push(...events);
         if (events.some((event) => event.type === 'on')) sounding.push('synth');
       }
-      this.listener?.({ step, sounding });
+      this.listener?.(sliceBar === undefined ? { step, sounding } : { step, sounding, sliceBar });
     }
   }
 }

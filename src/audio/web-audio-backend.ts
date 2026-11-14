@@ -13,9 +13,19 @@ import { clickAt } from '../core/metronome';
 import { DRUM_ROWS, type NodeId } from '../core/nodes';
 import type { Link } from '../core/routing';
 import { LookaheadScheduler, type ScheduledStep } from '../core/scheduler';
+import { loopId, type BassLoop } from '../core/slice';
 import { startTicker, type AudioTicker } from './audio-clock';
-import type { AudioBackend, LfoTraceListener, StatusListener, StepEvent, StepListener } from './backend';
-import { bassTrackSpec } from './bass/bass-track';
+import type {
+  AudioBackend,
+  LfoTraceListener,
+  SliceWaveListener,
+  StatusListener,
+  StepEvent,
+  StepListener,
+} from './backend';
+import { BassTrack } from './bass/bass-track';
+import { SliceLibrary } from './bass/slice-library';
+import { wavePeaks } from './bass/waveform';
 import { DistModule, loadDistProcessor } from './distortion/dist-module';
 import { DroneModule } from './drone/drone-module';
 import { DrumModule, type LoadedKit } from './drum-module';
@@ -29,7 +39,7 @@ import { MANIFEST_FILE, SampleLibrary } from './sample-library';
 import { Strip } from './strip';
 import { synthTrackSpec } from './synth/synth-track';
 import { loadVoiceProcessor } from './voice/voice-module';
-import { VoiceTrack, type TrackScene } from './voice/voice-track';
+import { VoiceTrack, type Track } from './voice/voice-track';
 
 /** Steps are scheduled this far ahead of the audio clock, seconds. */
 const LOOKAHEAD = 0.1;
@@ -115,11 +125,21 @@ export class WebAudioBackend implements AudioBackend {
   private graph: AudioGraph | null = null;
   private master: MasterBus | null = null;
   private drum: DrumModule | null = null;
-  /** BASS and SYNTH, on the shared voice engine. */
-  private readonly tracks: readonly VoiceTrack<TrackScene>[] = [
-    new VoiceTrack(bassTrackSpec()),
-    new VoiceTrack(synthTrackSpec()),
-  ];
+  /** BASS: the 303 on the shared voice engine, or SLICE, pieces of a loop. */
+  private readonly bass = new BassTrack(
+    {
+      get: (loop) => this.loops?.get(loop),
+      request: (loop) => this.requestLoop(loop),
+    },
+    () => this.voiceLoad === 'ready',
+  );
+  /** BASS and SYNTH, the sequenced voices. */
+  private readonly tracks: readonly Track[] = [this.bass, new VoiceTrack(synthTrackSpec())];
+  /** The bass loops, decoded on demand. */
+  private loops: SliceLibrary | null = null;
+  /** Loop waiting to be heard (it may still be decoding). */
+  private pendingLoopPreview: BassLoop | null = null;
+  private readonly waveListeners = new Set<SliceWaveListener>();
   /** LEAD, live on the shared voice engine. */
   private readonly lead = new LeadTrack();
   /** DRONE, live on native Web Audio nodes. */
@@ -217,6 +237,22 @@ export class WebAudioBackend implements AudioBackend {
     this.playAudition();
   }
 
+  previewLoop(loop: BassLoop): void {
+    this.pendingLoopPreview = loop;
+    this.playLoopPreview();
+  }
+
+  previewSlice(slice: number): void {
+    const context = this.context;
+    if (!this.initialized || !context) return;
+    this.bass.previewSlice(slice, context.currentTime + AUDITION_DELAY);
+  }
+
+  onSliceWave(listener: SliceWaveListener): () => void {
+    this.waveListeners.add(listener);
+    return () => this.waveListeners.delete(listener);
+  }
+
   update(scene: AudioScene): void {
     this.scene = scene;
     if (this.initialized) this.apply(scene);
@@ -264,11 +300,20 @@ export class WebAudioBackend implements AudioBackend {
     this.graph = new AudioGraph(context, keepAlive);
     this.graph.add(MASTER, this.master);
     this.metronome = new MetronomeVoice(context, context.destination);
-    this.library = new SampleLibrary((data) => context.decodeAudioData(data));
+    const decode = (data: ArrayBuffer): Promise<AudioBuffer> => context.decodeAudioData(data);
+    this.library = new SampleLibrary(decode);
+    this.loops = new SliceLibrary(decode);
 
     void this.library.loadManifest().then(
       (manifest) => this.setStatus({ kits: manifest.kits.map((kit) => kit.id) }),
       () => this.reportMissing('*', [MANIFEST_FILE]),
+    );
+    void this.loops.loadManifest().then(
+      (loops) => this.setStatus({ loops }),
+      (error: unknown) => {
+        console.warn(`M.O.N.O.: no se pudo cargar ${MANIFEST_FILE} de los loops de BASS.`, error);
+        this.reportMissing('bass', [MANIFEST_FILE]);
+      },
     );
     const loaded = (): void => {
       if (this.initialized && this.scene) this.apply(this.scene);
@@ -281,6 +326,8 @@ export class WebAudioBackend implements AudioBackend {
       (error: unknown) => {
         this.voiceLoad = 'failed';
         console.warn('M.O.N.O.: no se pudo cargar la voz de BASS, SYNTH y LEAD; quedan en silencio.', error);
+        // BASS still joins the graph: SLICE needs no worklet.
+        loaded();
       },
     );
     void loadDistProcessor(context).then(
@@ -312,6 +359,7 @@ export class WebAudioBackend implements AudioBackend {
     }
     this.onContextState();
     this.playAudition();
+    this.playLoopPreview();
   }
 
   private readonly onContextState = (): void => {
@@ -345,7 +393,7 @@ export class WebAudioBackend implements AudioBackend {
     for (const [id, strip] of this.strips) strip.setLevel(this.levelOf(scene, id), now);
     this.metronome!.setVolume(scene.metronome.volume, now);
     for (const row of DRUM_ROWS) this.drum?.setRow(row, scene.drum.rows[row], now);
-    for (const track of this.tracks) track.update(scene);
+    for (const track of this.tracks) track.update(scene, now);
     this.lead.update(scene);
     this.drone?.setScene(scene, now);
     this.dist?.setSettings(scene.dist);
@@ -363,11 +411,16 @@ export class WebAudioBackend implements AudioBackend {
     if (this.structuralChange(scene)) this.queueStructural();
   }
 
-  /** Whether a node of the scene should be in the graph (worklet nodes need their processor). */
+  /**
+   * Whether a node of the scene should be in the graph (worklet nodes need their
+   * processor; BASS waits for the voice processor to settle, then joins even if it
+   * failed, since SLICE plays without it).
+   */
   private wants(scene: AudioScene, id: NodeId): boolean {
     if (!scene.nodes.includes(id)) return false;
     if (id === DIST) return this.distLoad === 'ready';
     if (id === LFO) return this.lfoLoad === 'ready';
+    if (id === this.bass.id) return this.voiceLoad !== 'loading';
     return id === DRUM || id === DRONE || this.voiceLoad === 'ready';
   }
 
@@ -463,7 +516,7 @@ export class WebAudioBackend implements AudioBackend {
     applied.generation = scene.drum.generation;
     applied.seed = scene.drum.seed;
     applied.pattern = scene.drum.pattern;
-    for (const track of this.tracks) track.commit(scene);
+    for (const track of this.tracks) track.commit(scene, time);
 
     // Nodes.
     this.place(
@@ -575,6 +628,53 @@ export class WebAudioBackend implements AudioBackend {
     });
   }
 
+  /**
+   * Asks for a loop to be decoded (lazily: only the loops picked or heard are loaded).
+   * Once in, it switches in at the next bar if the scene wants it, and its shape goes
+   * out for the wave strip. A failed loop is reported and the rest keeps playing.
+   */
+  private requestLoop(loop: BassLoop): void {
+    const loops = this.loops;
+    const id = loopId(loop);
+    // A loop that failed is not asked for again (like a kit): the display says so.
+    const state = this.status.loopStates[id];
+    if (!loops || state === 'loading' || state === 'failed' || loops.has(loop)) return;
+    this.setLoopState(id, 'loading');
+    void loops.load(loop).then(
+      (buffer) => {
+        this.setLoopState(id, 'ready');
+        const wave = { id, bars: loop.bars, peaks: wavePeaks(buffer, loop.bars) };
+        for (const listener of this.waveListeners) listener(wave);
+        const wanted = this.scene?.bass.slice.loop;
+        if (wanted && loopId(wanted) === id) this.queueStructural();
+        if (this.pendingLoopPreview && loopId(this.pendingLoopPreview) === id) this.playLoopPreview();
+      },
+      (error: unknown) => {
+        console.warn(`M.O.N.O.: no se pudo cargar el loop ${id}.`, error);
+        this.setLoopState(id, 'failed');
+        if (this.pendingLoopPreview && loopId(this.pendingLoopPreview) === id) this.pendingLoopPreview = null;
+      },
+    );
+  }
+
+  private setLoopState(id: string, state: 'loading' | 'ready' | 'failed'): void {
+    this.setStatus({ loopStates: { ...this.status.loopStates, [id]: state } });
+  }
+
+  /** Plays the first beat of the pending loop through BASS, once it is decoded. */
+  private playLoopPreview(): void {
+    const loop = this.pendingLoopPreview;
+    const context = this.context;
+    if (loop === null || !this.initialized || !context) return;
+    const buffer = this.loops?.get(loop);
+    if (!buffer) {
+      this.requestLoop(loop);
+      return;
+    }
+    this.pendingLoopPreview = null;
+    this.bass.previewLoop(loop, buffer, context.currentTime + AUDITION_DELAY);
+  }
+
   /** Plays the pending kit's kick through DRUM, once its samples are in. */
   private playAudition(): void {
     const id = this.pendingAudition;
@@ -629,7 +729,10 @@ export class WebAudioBackend implements AudioBackend {
     for (const track of this.tracks) {
       if (this.heard.has(track.id) && track.play(step, time, duration)) sounding.push(track.id);
     }
-    if (this.listener) this.visuals.push({ time, event: { step, sounding } });
+    if (this.listener) {
+      const sliceBar = this.bass.sliceBar();
+      this.visuals.push({ time, event: sliceBar === undefined ? { step, sounding } : { step, sounding, sliceBar } });
+    }
   }
 
   // Status ---------------------------------------------------------------------------------------

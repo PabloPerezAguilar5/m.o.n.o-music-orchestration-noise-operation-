@@ -161,6 +161,36 @@ describe('linkAudio (store ↔ backend)', () => {
     expect(backend.bassEvents.filter((event) => event.type === 'on' && event.time >= 2)).toHaveLength(7);
   });
 
+  it('BASS in SLICE plays its pieces on the shared clock, lights up, and reports the loop bar', () => {
+    const arp = { set: 'arp', file: 'a-128-c.wav', variant: 'a', bars: 4, bpm: 128, key: 'C' } as const;
+    store.addNode('bass');
+    backend.emitStatus({ ...INITIAL_AUDIO_STATUS, loops: [arp] });
+    store.selectLoop(arp);
+    store.setSliceBar('auto');
+    store.setBassVoice('slice');
+    for (let ms = 0; ms <= 2050; ms += 50) backend.advanceTo(ms / 1000);
+    // One bar: the original order, piece N on step N, from bar 1 of the loop.
+    expect(backend.sliceEvents.slice(0, 16).map((event) => event.slice)).toEqual(Array.from({ length: 16 }, (_, i) => i));
+    expect(backend.sliceEvents[0]).toMatchObject({ time: 0, bar: 0, reverse: false, loop: arp });
+    expect(backend.bassEvents).toEqual([]); // the 303 is quiet
+    expect(pulses.filter((p) => p.id === 'bass').length).toBeGreaterThanOrEqual(16);
+    // The second bar comes from bar 2 of the loop (AUTO), and the store knows it.
+    expect(backend.sliceEvents[16]).toMatchObject({ bar: 1 });
+    expect(store.getState().transport.sliceBar).toBe(1);
+  });
+
+  it('passes loop and piece previews to the backend', () => {
+    const fresh = new Store();
+    const silent = new SilentBackend();
+    const cues = new Cues();
+    linkAudio(fresh, silent, vi.fn(), cues);
+    const line = { set: 'line', file: 'a-128-a.wav', variant: 'a', bars: 1, bpm: 128, key: 'A' } as const;
+    cues.send({ type: 'loop-preview', loop: line });
+    cues.send({ type: 'slice-preview', slice: 3 });
+    expect(silent.loopPreviews).toEqual([line]);
+    expect(silent.slicePreviews).toEqual([3]);
+  });
+
   it('forwards BASS key, knobs and keys as scenes', () => {
     store.nudgeRoot(1);
     store.setParam('bass', 'cutoff', 0.8);

@@ -7,6 +7,7 @@ import type { LfoShape } from '../core/lfo';
 import type { Cable } from '../core/routing';
 import type { DistType, NodeId } from '../core/nodes';
 import type { ScaleId } from '../core/scales';
+import type { SliceBar, SliceCategory, SliceDiceMode, SliceLoopRef, SlicePattern } from '../core/slice';
 import type { SynthMode, SynthPattern } from '../core/synth-patterns';
 import type { SynthPreset } from '../core/synth-voices';
 
@@ -15,6 +16,8 @@ export interface TransportState {
   readonly bpm: number;
   /** Current step 0..15, or -1 while stopped. */
   readonly step: number;
+  /** Bar of the loop BASS SLICE is playing from (0-based), reported with each step. */
+  readonly sliceBar: number;
 }
 
 /** Tonic and scale, shared by BASS, SYNTH, LEAD (SCALE LOCK) and DRONE (the pad). */
@@ -36,7 +39,35 @@ export interface DrumState {
 
 export type BassWave = 'saw' | 'square';
 
+/** SYNTH: the 303 voice. SLICE: pieces of a loop from public/samples/bass. */
+export type BassVoice = 'synth' | 'slice';
+export const BASS_VOICE_IDS = ['synth', 'slice'] as const satisfies readonly BassVoice[];
+
+/** Everything SLICE remembers (plain data, to be saved and shared). Its knobs are in params.bass. */
+export interface SliceState {
+  /** The set whose loops the panel lists. */
+  readonly category: SliceCategory;
+  /** The loop whose pieces play. */
+  readonly loop: SliceLoopRef;
+  /** Which bar of a 4-bar loop the pieces come from, or AUTO. */
+  readonly bar: SliceBar;
+  /** SYNC: the loop follows the master's tempo (pitch with it). */
+  readonly sync: boolean;
+  /** REVERSE: every piece plays backwards. */
+  readonly reverse: boolean;
+  /** DICE style. */
+  readonly mode: SliceDiceMode;
+  /** Generates the pattern; never shown. */
+  readonly seed: number;
+  /** Bumped on every regeneration (DICE, mode, CAOS); hand edits keep it. */
+  readonly generation: number;
+  readonly pattern: SlicePattern;
+}
+
 export interface BassState {
+  /** Which voice sounds. Each keeps its own pattern. */
+  readonly voice: BassVoice;
+  readonly slice: SliceState;
   /** Generates the pattern; never shown. Kept so a pattern can be saved and rebuilt. */
   readonly seed: number;
   /** Bumped on every regeneration (DICE, mode, CAOS); hand edits keep it. */

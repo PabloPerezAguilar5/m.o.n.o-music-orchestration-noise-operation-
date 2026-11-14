@@ -1,5 +1,5 @@
 import { WebAudioBackend } from './audio/web-audio-backend';
-import { activity, cues, lfoMonitor, live, pulse, store } from './state';
+import { activity, cues, lfoMonitor, live, pulse, sliceMonitor, store } from './state';
 import { linkAudio } from './state/audio-link';
 import './ui/mono-app';
 
@@ -7,6 +7,8 @@ const backend = new WebAudioBackend();
 linkAudio(store, backend, pulse, cues, live);
 // The LFO's wave, for the display, the knob rings and its node's glow.
 backend.onLfoTrace((values) => lfoMonitor.push(values));
+// Each BASS loop's shape as it is decoded, for the SLICE wave strip.
+backend.onSliceWave((wave) => sliceMonitor.set(wave));
 
 // Browsers only let audio start inside a user gesture. The first touch anywhere
 // (the + button, play, anything) wakes it up; later touches retry if it was blocked.

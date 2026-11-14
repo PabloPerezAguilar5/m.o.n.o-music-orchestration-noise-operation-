@@ -12,6 +12,7 @@ import {
   type NodeId,
 } from '../core/nodes';
 import { DEFAULT_PATTERNS } from '../core/patterns';
+import { DEFAULT_LOOP, DEFAULT_SLICE_PATTERN } from '../core/slice';
 import { DEFAULT_SYNTH_PATTERN } from '../core/synth-patterns';
 import { BPM_DEFAULT } from '../core/transport';
 import type { AppState, ParamValues } from './types';
@@ -29,12 +30,21 @@ const defaultParams = (id: NodeId): ParamValues => {
   return values;
 };
 
-/** BASS knobs start where the voice sounds like a classic 303 line. */
+/**
+ * BASS knobs start where the voice sounds like a classic 303 line. The SLICE knobs
+ * start transparent (filter open, no drive, original pitch, whole pieces): the loop
+ * plays as in the file.
+ */
 const defaultBassParams = (): ParamValues => ({
   cutoff: 0.45,
   resonance: 0.55,
   decay: 0.45,
   drive: 0.3,
+  sliceVolume: 0.8,
+  sliceFilter: 1,
+  sliceDrive: 0,
+  slicePitch: 0.5,
+  sliceGate: 1,
   [MACRO_PARAM]: MACRO_DEFAULT,
 });
 
@@ -142,6 +152,7 @@ export function createInitialState(): AppState {
     },
     // Starts with the prototype's steps; DICE replaces it.
     bass: {
+      voice: 'synth',
       seed: INITIAL_SEED,
       generation: 0,
       mode: 'pulse',
@@ -149,6 +160,18 @@ export function createInitialState(): AppState {
       wave: 'saw',
       sub: false,
       slides: true,
+      // SLICE starts on the whole original loop; DICE replaces its pattern.
+      slice: {
+        category: DEFAULT_LOOP.set,
+        loop: DEFAULT_LOOP,
+        bar: 0,
+        sync: true,
+        reverse: false,
+        mode: 'original',
+        seed: INITIAL_SEED,
+        generation: 0,
+        pattern: DEFAULT_SLICE_PATTERN,
+      },
     },
     // Starts with the prototype's NOTA steps; DICE replaces it.
     synth: {
@@ -163,7 +186,7 @@ export function createInitialState(): AppState {
     cables: [],
     distType: 'soft',
     lfo: { shape: 'sine', sync: false },
-    transport: { playing: false, bpm: BPM_DEFAULT, step: -1 },
+    transport: { playing: false, bpm: BPM_DEFAULT, step: -1, sliceBar: 0 },
     metronome: { on: false, volume: 0.7 },
     audio: INITIAL_AUDIO_STATUS,
   };

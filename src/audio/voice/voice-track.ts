@@ -2,6 +2,7 @@ import type { AudioScene } from '../../core/audio-scene';
 import type { NodeId } from '../../core/nodes';
 import type { ScaleId } from '../../core/scales';
 import type { VoiceEvent } from '../../core/voice-events';
+import type { AudioModule } from '../graph';
 import type { EngineParams } from './engine';
 import { VoiceModule } from './voice-module';
 import type { VoiceInstrument } from './voice-messages';
@@ -11,6 +12,28 @@ export interface TrackScene {
   readonly generation: number;
   readonly root: number;
   readonly scale: ScaleId;
+}
+
+/**
+ * A sequenced instrument as the backend runs it (BASS, SYNTH): its module in the graph,
+ * what it is playing, and what waits for the next bar. Times are audio times, seconds.
+ */
+export interface Track {
+  readonly id: NodeId;
+  /** A new scene: continuous changes from `time`. */
+  update(scene: AudioScene, time: number): void;
+  /** Whether the scene has a change that waits for the next bar. */
+  pending(scene: AudioScene): boolean;
+  /** At the bar (`time`): the scene's structural changes take over. */
+  commit(scene: AudioScene, time: number): void;
+  /** Creates the module (the caller adds it to the graph). */
+  create(context: BaseAudioContext, scene: AudioScene): AudioModule;
+  /** Silences from `time`: drops what was scheduled and releases what sounds. */
+  flush(time: number): void;
+  /** The module is leaving the graph. */
+  drop(time: number): void;
+  /** Schedules one step. Returns whether something sounds on it (the node lights up). */
+  play(step: number, time: number, duration: number): boolean;
 }
 
 /** How one instrument (BASS, SYNTH) plugs into a VoiceTrack. */
@@ -34,7 +57,7 @@ export interface TrackSpec<S extends TrackScene> {
  * Applies at once: knobs and keys (parameters), hand edits of the pattern. Waits for the
  * bar: a regenerated pattern (and with it a new mode), tonic and scale.
  */
-export class VoiceTrack<S extends TrackScene> {
+export class VoiceTrack<S extends TrackScene> implements Track {
   module: VoiceModule | null = null;
   private playing: S | null = null;
 
@@ -44,8 +67,8 @@ export class VoiceTrack<S extends TrackScene> {
     return this.spec.id;
   }
 
-  /** A new scene: continuous changes now. */
-  update(scene: AudioScene): void {
+  /** A new scene: continuous changes now (parameters are smoothed in the DSP; no time needed). */
+  update(scene: AudioScene, _time?: number): void {
     const part = this.spec.part(scene);
     this.module?.setParams(this.spec.params(part));
     const playing = this.playing;
@@ -65,7 +88,7 @@ export class VoiceTrack<S extends TrackScene> {
   }
 
   /** At the bar: the scene's pattern and key take over. */
-  commit(scene: AudioScene): void {
+  commit(scene: AudioScene, _time?: number): void {
     this.playing = this.spec.part(scene);
   }
 

@@ -21,7 +21,7 @@ describe('Store', () => {
     const state = store.getState();
     expect(state.added).toEqual(['master']);
     expect(state.selected).toBe('master');
-    expect(state.transport).toEqual({ playing: false, bpm: 120, step: -1 });
+    expect(state.transport).toEqual({ playing: false, bpm: 120, step: -1, sliceBar: 0 });
   });
 
   it('adding a node selects it and starts playback', () => {

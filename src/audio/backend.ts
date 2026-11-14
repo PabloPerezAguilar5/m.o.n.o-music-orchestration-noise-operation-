@@ -1,6 +1,7 @@
 import type { AudioScene, AudioStatus } from '../core/audio-scene';
 import type { LiveEvent } from '../core/live-events';
 import type { NodeId } from '../core/nodes';
+import type { BassLoop } from '../core/slice';
 
 /** A step reaching the listener at the moment it is heard. */
 export interface StepEvent {
@@ -8,12 +9,22 @@ export interface StepEvent {
   readonly step: number;
   /** Nodes that actually played something on this step. */
   readonly sounding: readonly NodeId[];
+  /** The bar of its loop BASS SLICE played from on this step (0-based), when it is playing. */
+  readonly sliceBar?: number;
 }
 
 export type StepListener = (event: StepEvent) => void;
 export type StatusListener = (status: AudioStatus) => void;
 /** A stretch of the LFO's wave (-1..1, before CANTIDAD), LFO_TRACE_RATE values a second. */
 export type LfoTraceListener = (values: Float32Array) => void;
+
+/** The shape of a decoded loop, for the wave strip: peaks (0..1), WAVE_COLUMNS_PER_BAR per bar. */
+export interface SliceWave {
+  readonly id: string;
+  readonly bars: number;
+  readonly peaks: Float32Array;
+}
+export type SliceWaveListener = (wave: SliceWave) => void;
 
 /**
  * Boundary between the app and whatever produces sound and musical time.
@@ -37,6 +48,12 @@ export interface AudioBackend {
   perform(event: LiveEvent): void;
   /** Plays one kick of a kit right away, to hear it (playing or not). Loads the kit if needed. */
   audition(kit: string): void;
+  /** Plays the first beat of a BASS loop right away, to hear it. Loads the loop if needed. */
+  previewLoop(loop: BassLoop): void;
+  /** Plays one piece of the BASS loop that is in, right away, with the SLICE knobs. */
+  previewSlice(slice: number): void;
+  /** The shape of each loop as it is decoded, for the wave strip. Returns an unsubscribe function. */
+  onSliceWave(listener: SliceWaveListener): () => void;
   /** Status changes (audio running, kits available, failed files). Returns an unsubscribe function. */
   onStatus(listener: StatusListener): () => void;
   /** The LFO's wave as it runs, for the display and the knob rings. Returns an unsubscribe function. */

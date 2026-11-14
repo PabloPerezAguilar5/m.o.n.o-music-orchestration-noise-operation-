@@ -1,6 +1,7 @@
 import type { AudioScene } from '../core/audio-scene';
 import { DRUM_ROWS, drumToneParam, drumVolumeParam, MACRO_PARAM, type DrumRow } from '../core/nodes';
 import { liveCables } from '../core/routing';
+import { findLoop } from '../core/slice';
 import type { AppState } from './types';
 
 /** What should sound for a given app state. */
@@ -31,6 +32,20 @@ export function sceneFromState(state: AppState): AudioScene {
       droneLevel: master.droneLevel ?? 0,
     },
     bass: {
+      voice: bass.voice,
+      slice: {
+        generation: bass.slice.generation,
+        pattern: bass.slice.pattern,
+        loop: state.audio.loops ? findLoop(state.audio.loops, bass.slice.loop) : null,
+        bar: bass.slice.bar,
+        sync: bass.slice.sync,
+        reverse: bass.slice.reverse,
+        volume: bassKnobs.sliceVolume ?? 0,
+        filter: bassKnobs.sliceFilter ?? 1,
+        drive: bassKnobs.sliceDrive ?? 0,
+        pitch: bassKnobs.slicePitch ?? 0.5,
+        gate: bassKnobs.sliceGate ?? 1,
+      },
       generation: bass.generation,
       pattern: bass.pattern,
       mode: bass.mode,

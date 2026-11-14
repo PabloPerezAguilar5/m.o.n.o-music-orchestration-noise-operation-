@@ -2,8 +2,11 @@
 
 Bajo estilo TB-303 generado por codigo: una voz monofonica en un AudioWorklet,
 un secuenciador de 16 pasos con nota, slide y acento, y generacion de
-patrones con semilla portada de fck-synth. Los loops de
-`public/samples/bass` **no** se usan todavia.
+patrones con semilla portada de fck-synth.
+
+> **Etapa 7:** el BASS gano una segunda voz, **SLICE**, que corta los loops de
+> `public/samples/bass` en 16 pedazos. Se elige en la seccion VOZ del panel; esta
+> voz 303 es SYNTH y no cambio. Ver `docs/SLICE.md`.
 
 ## Modulos
 

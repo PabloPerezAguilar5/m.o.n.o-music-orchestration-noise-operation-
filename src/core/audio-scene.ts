@@ -9,6 +9,7 @@ import type { DistSettings } from './dist';
 import type { LfoShape } from './lfo';
 import type { DrumRow, NodeId } from './nodes';
 import type { Link } from './routing';
+import type { BassLoop, SliceBar, SlicePattern } from './slice';
 
 /**
  * What should sound, derived from the app state. The app hands a new scene to the
@@ -31,7 +32,28 @@ export interface DrumScene {
   readonly rows: Readonly<Record<DrumRow, DrumRowScene>>;
 }
 
+/** BASS in SLICE mode: the loop, the pattern of pieces and the knobs. */
+export interface SliceScene {
+  /** Changes whenever the pattern is regenerated (DICE, mode, CAOS). Hand edits keep it. */
+  readonly generation: number;
+  readonly pattern: SlicePattern;
+  /** The loop, with its tempo and bars from the manifest; null until the manifest is in. */
+  readonly loop: BassLoop | null;
+  readonly bar: SliceBar;
+  readonly sync: boolean;
+  readonly reverse: boolean;
+  /** Knob values, 0..1. */
+  readonly volume: number;
+  readonly filter: number;
+  readonly drive: number;
+  readonly pitch: number;
+  readonly gate: number;
+}
+
 export interface BassScene {
+  /** Which voice plays: the 303 or the pieces of a loop. */
+  readonly voice: 'synth' | 'slice';
+  readonly slice: SliceScene;
   /** Changes whenever the pattern is regenerated (DICE, mode, CAOS). Hand edits keep it. */
   readonly generation: number;
   readonly pattern: BassPattern;
@@ -131,15 +153,25 @@ export interface MetronomeScene {
 
 export type AudioState = 'idle' | 'starting' | 'running' | 'blocked' | 'unavailable';
 
+/** Where a SLICE loop stands: being decoded, ready to play, or failed. */
+export type LoopLoadState = 'loading' | 'ready' | 'failed';
+
 export interface AudioStatus {
   readonly state: AudioState;
   /** Kit ids from the sample manifest, once loaded. */
   readonly kits: readonly string[];
-  /** Files that failed to load, by kit id. "manifest.json" when the manifest itself failed. */
+  /**
+   * Files that failed to load, by kit id. "manifest.json" when the manifest itself
+   * failed. The BASS loop manifest reports under "bass".
+   */
   readonly missing: Readonly<Record<string, readonly string[]>>;
+  /** The loops of public/samples/bass, once their manifest is in; null before. */
+  readonly loops: readonly BassLoop[] | null;
+  /** Loops asked for so far, by id ("set/file"). */
+  readonly loopStates: Readonly<Record<string, LoopLoadState>>;
 }
 
-export const INITIAL_AUDIO_STATUS: AudioStatus = { state: 'idle', kits: [], missing: {} };
+export const INITIAL_AUDIO_STATUS: AudioStatus = { state: 'idle', kits: [], missing: {}, loops: null, loopStates: {} };
 
 // Knob to gain mappings ------------------------------------------------------------------------
 

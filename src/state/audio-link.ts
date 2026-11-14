@@ -21,7 +21,7 @@ export function linkAudio(
   live?: Live,
 ): () => void {
   const onStep = (event: StepEvent): void => {
-    store.setStep(event.step);
+    store.setStep(event.step, event.sliceBar);
     for (const { id, ms } of pulsesAt(event.step, event.sounding)) pulse(id, ms);
   };
 
@@ -50,6 +50,8 @@ export function linkAudio(
       state.lfo,
       state.transport.bpm,
       state.metronome,
+      // The loop manifest: once it is in, SLICE knows its loop's tempo and bars.
+      state.audio.loops,
     ];
     if (audible.some((value, i) => value !== sent[i])) {
       sent = audible;
@@ -66,6 +68,8 @@ export function linkAudio(
   const unsubscribeStore = store.subscribe(sync);
   const unsubscribeCues = cues?.listen((cue) => {
     if (cue.type === 'audition') backend.audition(cue.kit);
+    else if (cue.type === 'loop-preview') backend.previewLoop(cue.loop);
+    else if (cue.type === 'slice-preview') backend.previewSlice(cue.slice);
   });
   const unsubscribeLive = live?.listen((event) => backend.perform(event));
   sync();
