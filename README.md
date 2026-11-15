@@ -6,7 +6,7 @@ A web app for making live electronic and experimental music. Build a canvas of n
 
 **Try it:** [https://monolive.vercel.app](https://monolive.vercel.app)
 
-![m.o.n.o - Live Music Interface](docs/mono.png)
+![m.o.n.o - Live Music Interface](docs/monoprev.png)
 
 No account, no install, no backend. Everything runs in your browser.
 
