@@ -61,10 +61,55 @@ contra ancho, limpio contra saturado. Un test lo mide.
 ## Panel
 
 ```
-[ SYNTH: ONDA CUTOFF RESO ATAQUE RELEASE DETUNE ] [ SONIDO: PLUCK PAD / STAB GLASS ]
-[ ESCALA: - C +, - PENTA MENOR + ] [ MODO: ARPEGIO ACORDES / MELODIA AMBIENTE ] [ PATRON: DICE BORRAR ] .. [ CAOS ]
+[ SONIDO ]  [ OSC ]       [ FILTRO ]      [ ENV ]          [ ESCALA ] [ MODO ]  [ PATRON ]  [ MACRO ]
+ PLUCK  PAD  ONDA DETUNE   CUTOFF RESO     ATAQUE RELEASE   - C +      ARPEGIO   DICE        CAOS
+   (O)       (perillas)                                       - ... +    ACORDES   BORRAR
+ GLASS STAB                                                              MELODIA AMBIENTE
+
+[ C3 ][ Eb3 ][ F3 ][ G3 ][ Bb3 ] [ C4 ][ Eb4 ][ F4 ][ G4 ][ Bb4 ]        <- TECLADO: 10 teclas
+[ 1 ][ 2 ][ 3 ][ 4 ] ... [ 16 ]                                          <- 16 PASOS
+LARGO [1][2][3][4]  [ PASO 3 ]                                  [ AUTO ]
 ```
 
+El modelo de datos no cambio (hasta 3 notas por paso y un largo en pasos), asi que los
+patches y los links viejos cargan igual. Cambio solo como se edita.
+
+- **SONIDO:** una perilla grande de cuatro posiciones con PLUCK, PAD, STAB y GLASS
+  alrededor (en el sentido del reloj, desde arriba a la izquierda). Se toca un nombre o
+  la perilla, que pasa al siguiente (con el teclado, las flechas). La posicion elegida
+  tiene el LED encendido y el puntero de la perilla apunta a ella.
+- **Perillas:** OSC (ONDA, DETUNE), FILTRO (CUTOFF, RESO) y ENV (ATAQUE, RELEASE), cada
+  una bajo su cabecera oscura. El display, al girarlas, sigue diciendo `SYNTH ONDA 108`.
+- **TECLADO:** 10 teclas, una por nota de la escala en dos octavas, la mas grave a la
+  izquierda, cada una con su nombre y octava (`C3 Eb3 F3 G3 Bb3 C4 Eb4 F4 G4 Bb4` en
+  C penta menor). Un espacio separa las dos octavas. Los nombres siguen a la tonica y a la
+  escala (compartidas con el BASS): al cambiarlas cambian las teclas; las notas ya
+  cargadas se comportan como siempre (son grados de la escala).
+- **16 PASOS:** botones numerados con LED, como los de DRUM. El LED se enciende si el
+  paso tiene notas. **Tocar un paso lo elige** para editar: queda oscuro con el numero
+  encendido en el color del SYNTH. El cabezal de reproduccion es el mismo contorno que
+  en DRUM y no pisa la seleccion.
+- **Notas de un paso:** con un paso elegido, sus notas se ven con la tecla encendida en el
+  color del SYNTH. Tocar una tecla apagada la agrega; tocar una encendida la quita.
+  **Maximo 3 notas**: la cuarta reemplaza a la **mas vieja** (la primera que se toco
+  en ese paso). Como el patron guarda las notas ordenadas, no su orden, la antiguedad se
+  recuerda solo mientras se edita (no se guarda); en un paso que se genero o se cargo, la
+  mas vieja se toma como la mas grave.
+- **Sin paso elegido,** la primera tecla que se toca elige el paso 1 y escribe ahi.
+- **Audicion:** cada tecla suena con el sonido actual, este o no la reproduccion
+  andando, y tambien al apagar una nota. Usa las mismas 4 voces, el mismo filtro y el
+  mismo cable al MASTER que el patron (`VoiceTrack.preview`, sin otro camino de audio).
+  Suena unos 0,5 s y no toca el patron ni el reloj. El
+  nodo se enciende un instante, como al editar un paso.
+- **AUTO** (apagado al arrancar): con AUTO prendido, despues de marcar una nota el paso
+  elegido pasa al siguiente (del 16 vuelve al 1), para cargar una secuencia rapido. Para
+  armar un acorde, apagarlo.
+- **LARGO:** cuatro botones, 1, 2, 3 y 4 pasos, para el paso elegido; el valor actual queda
+  encendido. Se muestra atenuado en un paso sin notas (y sin paso elegido, donde ademas
+  no hace nada). A su lado, un display chico dice el paso elegido (`PASO 3`, o `SIN PASO`).
+  Un patron de AMBIENTE puede traer largos de 8 y 16: no tienen boton, no se pierden, y el
+  display los escribe (`PASO 1 · LARGO 8`).
+- **ESCALA, MODO, DICE, BORRAR y CAOS** conservan su funcion.
 - **BORRAR** (en PATRON, tambien en DRUM y BASS): deja todos los pasos en
   blanco. Es como una edicion a mano: suena desde el paso siguiente y no
   cambia la semilla, asi que DICE, un modo o CAOS lo vuelven a llenar. No se
@@ -72,23 +117,40 @@ contra ancho, limpio contra saturado. Un test lo mide.
 - **Barra espaciadora:** reproduce y detiene desde cualquier lugar, salvo
   mientras se escribe el tempo (y si el display del tempo tiene el foco, el
   espacio lo abre para escribir, como antes).
-
-- **Secuenciador:** 11 filas x 16 pasos. Las 10 de arriba son las notas de
-  dos octavas de la escala, con nombre y octava (`Bb4` ... `C3`); la ultima,
-  separada por un espacio, es **DURACION** (con el mismo criterio que SLIDE y
-  ACCENT en el BASS: nombre completo, aparte de las notas, atenuada en los
-  pasos sin notas).
-- **Acordes:** tocar una nota la agrega al paso; tocarla de nuevo la saca.
-  Hasta 3 notas por paso.
-- **Duracion:** tocar DURACION en un paso pasa por 1, 2, 4, 8 y 16 pasos. El
-  numero queda escrito en la tecla; el LED se enciende si dura mas de un paso.
 - El SYNTH no tiene slides, asi que no tiene tecla SLIDE ON/OFF.
 - **ONDA** pasa de sierra (0) a cuadrada (1) de forma continua.
 - **DETUNE** separa los dos osciladores de cada voz (0 a 40 cents).
 - **ATAQUE:** 2 ms a ~2 s. **RELEASE:** 10 ms a ~2,5 s. Ambos escalados por el
   sonido.
-- **Display:** `SYNTH · PLUCK · C PENTA MENOR`.
+- **Display:** `SYNTH · PLUCK · C PENTA MENOR`; al editar, `SYNTH PASO 3 Bb4` o
+  `SYNTH PASO 3 LARGO 2`.
 - Sin la palabra "semilla" en la interfaz.
+
+### Alturas bajas
+
+El teclado y los pasos entran completos, sin scroll, en las alturas de un telefono de costado:
+
+- **Pantalla alta (1280x720):** todo el panel entra; el teclado se lleva el alto que sobra.
+  A 1100 px de ancho o menos, el SYNTH junta un poco sus ocho grupos de perillas para que
+  ninguno se aplaste.
+- **Pantalla baja (menos de 600 px de alto):** las perillas pasan a la columna de la izquierda
+  (con scroll propio, como en todos los nodos) y el teclado, los pasos, LARGO y AUTO ocupan la
+  zona entera. Las teclas, LARGO y AUTO miden 44 px o mas, tambien a 740x360. Los 16 pasos
+  siguen siendo la excepcion de `LAYOUT.md` (34 px de alto, unos 26 px de ancho).
+- No se achico ninguna tecla: para ganar lugar se compactan las perillas (la perilla
+  de SONIDO y los nombres, en vez de las teclas).
+
+### Cambios en el codigo
+
+| Archivo | Cambio |
+| --- | --- |
+| `src/core/synth-patterns.ts` | Sin grilla de 11 filas. `toggleSynthNote` (agregar, quitar, reemplazar a la mas vieja) y `setSynthLength`. `SYNTH_LENGTHS` suma el 3 (los patches viejos con 1, 2, 4, 8 y 16 siguen validos). |
+| `src/ui/panel/mono-synth-notes.ts` | La zona: teclado, 16 pasos, LARGO y AUTO. El paso elegido y AUTO viven aca (son la mano sobre el panel, no estado del patron). |
+| `src/ui/panel/mono-sound-dial.ts` | La perilla de SONIDO. |
+| `src/state/store.ts` | `toggleSynthNote`, `setSynthLength` (reemplazan a `toggleSynthStep`) y la antiguedad de las notas por paso. |
+| `src/state/cues.ts`, `audio-link.ts`, `audio/backend.ts` | El cue `synth-preview` y `AudioBackend.previewSynth`. |
+| `src/audio/voice/voice-track.ts` | `preview`: una nota a mano en las voces del propio SYNTH. |
+| `src/core/nodes.ts` | La zona del SYNTH es `notes` (no `sequencer`), con las secciones OSC, FILTRO y ENV. |
 
 ## Modos de DICE
 
@@ -148,11 +210,18 @@ limitador del MASTER):
   dos (en el proximo compas).
 - **Rango:** dos octavas de la escala de 5 notas, desde C3 (una octava sobre
   el BASS). GLASS suena una octava mas arriba.
-- **Cuarta nota en un paso lleno:** reemplaza a la nota mas cercana del
-  acorde (mueve esa voz del acorde) en lugar de no hacer nada.
-- **Duraciones:** 1, 2, 4, 8 y 16 pasos, ciclando con DURACION. Las notas se
+- **Cuarta nota en un paso lleno:** reemplaza a la **mas vieja** del acorde (antes, a la
+  mas cercana), en lugar de no hacer nada.
+- **Duraciones:** 1, 2, 3 y 4 pasos desde LARGO; 8 y 16 siguen existiendo (los hace
+  AMBIENTE y pueden venir en un patch), pero no tienen boton. Las notas se
   sueltan al 90 % de su duracion, para que un acorde repetido se vuelva a
   atacar.
+- **El 3 es un largo nuevo:** el modelo de datos no cambio (el largo era y es un numero
+  de pasos), pero la lectura de patches aceptaba solo 1, 2, 4, 8 y 16; ahora tambien 3.
+  Un patch con largo 3 en una version vieja de la app lo leeria como 1.
+- **El paso elegido no se guarda:** es la mano sobre el panel, como el pedazo elegido de
+  SLICE. Al recargar o cargar un patch hay que elegir el paso otra vez.
+- **AUTO da la vuelta:** del paso 16 pasa al 1.
 - **El SYNTH no tiene filas de acento ni de slide.** El motor los soporta (los
   usa el BASS), pero el pedido del panel no los incluia.
 - **Perillas iniciales:** ONDA queda donde estaba en el prototipo (el test de
@@ -172,9 +241,9 @@ limitador del MASTER):
 
 ## Pendiente o conocido
 
-- **Telefono horizontal (844x390):** la grilla de 11 filas queda cortada, como
-  las del DRUM y el BASS. Es el problema de alto ya anotado; queda para una
-  etapa de diseno.
+- **Telefono horizontal (844x390 y 740x360):** el teclado, los pasos y LARGO entran sin scroll
+  (ya no hay grilla de 11 filas); la columna de perillas scrollea por su cuenta, como en
+  todos los nodos.
 - Probado en Chromium (desarrollo y build de produccion). Safari y Firefox, no.
 - Terminos nuevos en la interfaz: PLUCK, PAD, STAB, GLASS (nombres de los
   sonidos, como los pediste), DETUNE.
@@ -188,19 +257,30 @@ limitador del MASTER):
   maximo, DETUNE, ATAQUE y RELEASE, mas brillante que el bajo, cada sonido
   distinto, apagar todo.
 - `tests/unit/synth.test.ts`: **escalas** (dos octavas desde C3, toda nota en
-  la escala, con cualquier tonica); grilla; **acordes** (agregar, sacar,
-  maximo 3, la cuarta reemplaza a la mas cercana); **duracion** (DUR cicla,
-  numero en la tecla, release al largo); generacion reproducible y caracter de
+  la escala, con cualquier tonica); **acordes** (agregar, sacar, maximo 3, la
+  cuarta reemplaza a la mas vieja, orden que se pierde en pasos generados o
+  cargados, pasos malos que no cambian nada); **LARGO** (1 a 4, 8 y 16 siguen
+  validos, el resto no); el store (editar a mano mantiene la generacion, BORRAR y
+  DICE olvidan el orden, un patch con acorde y largo 3 vuelve igual); release al largo; generacion reproducible y caracter de
   cada modo; CAOS; secuencia de un acorde (notas juntas, ids propios); notas
   largas superpuestas; store (DICE siempre distinto, modo y CAOS con la misma
   semilla, el sonido no cambia el patron).
 - `tests/unit/audio-link.test.ts`: el SYNTH toca en el reloj compartido, se
   enciende al sonar y se calla con el cable cortado; DRUM, BASS y SYNTH se
-  encienden juntos en un paso comun.
+  encienden juntos en un paso comun; las teclas llegan al backend con la
+  reproduccion parada y sin tocar el patron.
+- `tests/unit/patch.test.ts`: los largos 1, 2, 3, 4, 8 y 16 se leen; 5 y 7 no existen.
 - `tests/unit/state.test.ts`: BASS y SYNTH comparten la tonalidad.
 - `tests/e2e/audio.spec.ts`: prueba de humo del SYNTH (suena, cabezal, nodo,
-  cable cortado y reconectado; panel: sonidos, modos, DICE, acorde, DURACION,
-  filas con nombre y octava, tonalidad compartida con el BASS) y la prueba de
-  **mezcla**.
+  cable cortado y reconectado); panel (cabeceras, perilla de SONIDO, modos, DICE,
+  teclas con nombre y octava, tonalidad compartida con el BASS); **teclado** (paso 3,
+  tres teclas = un acorde, la cuarta reemplaza a la mas vieja, una encendida se
+  quita, el patron guardado coincide con lo que se ve, el cabezal no pisa la
+  seleccion); primera tecla sin paso elegido y AUTO; LARGO; **audicion** con la
+  reproduccion parada; y la prueba de **mezcla**.
+- `tests/e2e/patches.spec.ts`: SAVE, recargar, LOAD y las teclas del paso 3 vuelven a
+  verse encendidas, con su largo.
+- `tests/e2e/short-screen.spec.ts`: a 844x390 y 740x360 el teclado, los pasos, LARGO y
+  AUTO se ven completos sin scroll, con teclas de 44 px.
 - `tests/e2e/parity.spec.ts`: `panel-synth` sale de la comparacion (punto 7,
-  con el motivo).
+  con el motivo). Su imagen de referencia no se toco.

@@ -31,6 +31,8 @@ export class SilentBackend implements AudioBackend {
   /** Loops and pieces asked to be heard, in order. */
   readonly loopPreviews: BassLoop[] = [];
   readonly slicePreviews: number[] = [];
+  /** SYNTH notes asked to be heard from the keyboard (scale steps), in order. */
+  readonly synthPreviews: number[] = [];
   /** Live events (LEAD notes, DRONE layers), in the order they were played. */
   readonly live: LiveEvent[] = [];
   private readonly bassSequencer = new BassSequencer();
@@ -78,6 +80,10 @@ export class SilentBackend implements AudioBackend {
 
   previewLoop(loop: BassLoop): void {
     this.loopPreviews.push(loop);
+  }
+
+  previewSynth(note: number): void {
+    this.synthPreviews.push(note);
   }
 
   previewSlice(slice: number): void {

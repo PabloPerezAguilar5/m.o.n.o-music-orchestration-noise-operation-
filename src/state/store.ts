@@ -38,7 +38,8 @@ import {
   EMPTY_SYNTH_PATTERN,
   generateSynthPattern,
   sameSynthGrid,
-  toggleSynthCell,
+  setSynthLength,
+  toggleSynthNote,
   type SynthMode,
 } from '../core/synth-patterns';
 import type { SynthPreset } from '../core/synth-voices';
@@ -55,6 +56,12 @@ const RANDOMIZE_ATTEMPTS = 16;
 /** Application state plus the actions that change it. State objects are never mutated. */
 export class Store extends Emitter implements Source<AppState> {
   private state: AppState;
+  /**
+   * SYNTH: per step, its notes oldest first, so a fourth note replaces the oldest one
+   * (patterns keep notes sorted). Not state: never saved, and notes it does not know
+   * (a generated or loaded pattern) count as older.
+   */
+  private readonly synthNoteAge = new Map<number, readonly number[]>();
 
   constructor(initial: AppState = createInitialState()) {
     super();
@@ -185,7 +192,10 @@ export class Store extends Emitter implements Source<AppState> {
     else if (id === 'bass' && bass.voice === 'slice') {
       this.update({ bass: { ...bass, slice: { ...bass.slice, pattern: EMPTY_SLICE_PATTERN } } });
     } else if (id === 'bass') this.update({ bass: { ...bass, pattern: EMPTY_BASS_PATTERN } });
-    else if (id === 'synth') this.update({ synth: { ...this.state.synth, pattern: EMPTY_SYNTH_PATTERN } });
+    else if (id === 'synth') {
+      this.synthNoteAge.clear();
+      this.update({ synth: { ...this.state.synth, pattern: EMPTY_SYNTH_PATTERN } });
+    }
   }
 
   /** Hand edit of a DRUM step: keeps the generation, so it sounds from the next step. */
@@ -355,10 +365,22 @@ export class Store extends Emitter implements Source<AppState> {
 
   // SYNTH ---------------------------------------------------------------------------------------
 
-  /** Hand edit of the SYNTH grid (a chord note or DUR). Keeps the generation: it sounds from the next step. */
-  toggleSynthStep(row: number, col: number): void {
+  /**
+   * Hand edit of a SYNTH step: a key of the keyboard adds a note to its chord or takes it
+   * out (a fourth replaces the oldest). Keeps the generation: it sounds from the next step.
+   */
+  toggleSynthNote(step: number, note: number): void {
     const { synth } = this.state;
-    const pattern = toggleSynthCell(synth.pattern, row, col);
+    const edit = toggleSynthNote(synth.pattern, step, note, this.synthNoteAge.get(step));
+    if (edit.pattern === synth.pattern) return;
+    this.synthNoteAge.set(step, edit.age);
+    this.update({ synth: { ...synth, pattern: edit.pattern } });
+  }
+
+  /** Hand edit of a SYNTH step: LARGO, how many steps its notes are held. */
+  setSynthLength(step: number, length: number): void {
+    const { synth } = this.state;
+    const pattern = setSynthLength(synth.pattern, step, length);
     if (pattern === synth.pattern) return;
     this.update({ synth: { ...synth, pattern } });
   }
@@ -390,6 +412,7 @@ export class Store extends Emitter implements Source<AppState> {
 
   private regeneratedSynth(mode: SynthMode, seed: number, chaos: number): AppState['synth'] {
     const { synth } = this.state;
+    this.synthNoteAge.clear();
     return {
       ...synth,
       mode,

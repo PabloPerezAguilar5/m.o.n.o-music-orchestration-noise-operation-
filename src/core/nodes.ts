@@ -17,7 +17,7 @@ export const DIST_TYPES = ['soft', 'hard', 'crush'] as const;
 export type DistType = (typeof DIST_TYPES)[number];
 
 /** The performance surface a node shows below its knobs. */
-export type ZoneKind = 'tempo' | 'sequencer' | 'xy' | 'type' | 'wave' | 'keys';
+export type ZoneKind = 'tempo' | 'sequencer' | 'notes' | 'xy' | 'type' | 'wave' | 'keys';
 
 /** Macro knob present on every node. On DRUM it sets how chaotic the generated pattern is. */
 export const MACRO_PARAM = 'chaos';
@@ -59,9 +59,15 @@ export const NODE_SPECS: Readonly<Record<NodeId, NodeSpec>> = {
   },
   synth: {
     params: ['wave', 'cutoff', 'resonance', 'attack', 'release', 'detune'],
-    zone: 'sequencer',
-    // Ten scale steps over two octaves (highest on top), then the length: see synth-patterns.ts.
-    rows: [...Array.from({ length: 10 }, (_, i) => `step${9 - i}`), 'length'],
+    // OSC, FILTRO and ENV, as the panel groups them. params keeps its order: KNOB_LABELS follows it.
+    sections: [
+      { id: 'osc', params: ['wave', 'detune'] },
+      { id: 'filter', params: ['cutoff', 'resonance'] },
+      { id: 'env', params: ['attack', 'release'] },
+    ],
+    // A keyboard of ten notes over sixteen steps, not a grid of rows: see synth-patterns.ts.
+    zone: 'notes',
+    rows: [],
   },
   drum: {
     params: DRUM_SECTIONS.flatMap((section) => section.params),

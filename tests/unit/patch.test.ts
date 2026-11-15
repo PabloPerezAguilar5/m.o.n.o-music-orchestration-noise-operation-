@@ -51,7 +51,8 @@ function busyStore(): Store {
   store.setParam('drum', MACRO_PARAM, 0.7);
   store.toggleDrumStep(1, 3);
   store.toggleBassStep(0, 2);
-  store.toggleSynthStep(3, 5);
+  store.toggleSynthNote(5, 3);
+  store.setSynthLength(5, 3);
   store.setBassMode('dirty');
   store.toggleBassWave();
   store.toggleBassSub();
@@ -246,6 +247,16 @@ describe('the validator against garbage', () => {
     expect(patch.bass.pattern[3]).toEqual({ note: null, slide: false, accent: false, length: 1 });
     // Three notes at most are read, then clamped and deduplicated: 12 → 9, 3, 3 → 3.
     expect(patch.synth.pattern[0]).toEqual({ notes: [3, 9], length: 1 });
+  });
+
+  it('keeps every length a SYNTH step can have: the old ones, and the 3 of LARGO', () => {
+    const lengths = [1, 2, 3, 4, 8, 16, 5, 7];
+    const { patch } = parsePatch({
+      ...base(),
+      synth: { pattern: lengths.map((length) => ({ notes: [1], length })) },
+    });
+    // 5 and 7 do not exist: they fall back to one step, as they always did.
+    expect(patch.synth.pattern.map((step) => step.length)).toEqual([1, 2, 3, 4, 8, 16, 1, 1, ...Array(8).fill(1)]);
   });
 
   it('keeps only cables that make sense: known nodes on the canvas, no loops, no input where there is none', () => {

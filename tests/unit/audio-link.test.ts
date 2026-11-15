@@ -207,6 +207,21 @@ describe('linkAudio (store ↔ backend)', () => {
     expect(silent.auditions).toEqual(['trip']);
   });
 
+  it('passes the SYNTH keyboard notes to the backend, stopped or not, and edits nothing', () => {
+    const fresh = new Store();
+    const silent = new SilentBackend();
+    const cues = new Cues();
+    linkAudio(fresh, silent, vi.fn(), cues);
+    fresh.addNode('synth');
+    const pattern = fresh.getState().synth.pattern;
+    fresh.togglePlay(); // stopped: the note is heard all the same
+    expect(silent.playing).toBe(false);
+    cues.send({ type: 'synth-preview', note: 7 });
+    cues.send({ type: 'synth-preview', note: 0 });
+    expect(silent.synthPreviews).toEqual([7, 0]);
+    expect(fresh.getState().synth.pattern).toBe(pattern);
+  });
+
   it('can be undone', () => {
     const fresh = new Store();
     const silent = new SilentBackend();

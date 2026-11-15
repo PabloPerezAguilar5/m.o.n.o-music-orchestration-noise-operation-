@@ -52,6 +52,11 @@ export interface AudioBackend {
   previewLoop(loop: BassLoop): void;
   /** Plays one piece of the BASS loop that is in, right away, with the SLICE knobs. */
   previewSlice(slice: number): void;
+  /**
+   * Plays one note of the SYNTH (a scale step, 0..9, in the key now set) right away, with
+   * its current sound, playing or not. It goes through the SYNTH's own voices and cable.
+   */
+  previewSynth(note: number): void;
   /** The shape of each loop as it is decoded, for the wave strip. Returns an unsubscribe function. */
   onSliceWave(listener: SliceWaveListener): () => void;
   /** Status changes (audio running, kits available, failed files). Returns an unsubscribe function. */

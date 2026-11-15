@@ -182,6 +182,10 @@ const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  *    After stage 4, the same criteria as BASS: a gap separates the ten note rows from
  *    the length row, captioned DURACIÓN in full, and its keys are dimmed on steps
  *    without notes. SYNTH has no slides, so it has no SLIDE ON/OFF key.
+ *    Later still, the eleven rows gave way to a keyboard of ten keys (one per note of the
+ *    scale), the sixteen numbered steps and LARGO for the picked step, with SONIDO as a big
+ *    four-position knob and the knobs grouped as OSC, FILTRO and ENV. The state stays out
+ *    of the pixel comparison; its reference image was not touched.
  */
 /*
  * 8. After stage 4, on request: PATRÓN gained a BORRAR key on DRUM, BASS and SYNTH that

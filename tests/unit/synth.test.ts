@@ -4,20 +4,19 @@ import { SCALE_IDS, SCALE_INTERVALS, SYNTH_STEPS, synthMidi } from '../../src/co
 import {
   DEFAULT_SYNTH_PATTERN,
   generateSynthPattern,
-  gridFromSynthPattern,
-  rowOfNote,
-  SYNTH_DUR_ROW,
+  sameSynthGrid,
+  setSynthLength,
   SYNTH_GATE,
-  SYNTH_LENGTHS,
   SYNTH_MAX_NOTES,
   SYNTH_MODES,
-  synthDimmedCells,
-  synthDurLabels,
+  SYNTH_PANEL_LENGTHS,
   SynthSequencer,
-  toggleSynthCell,
+  toggleSynthNote,
   type SynthPattern,
   type SynthStep,
 } from '../../src/core/synth-patterns';
+import { parsePatchText, patchJson } from '../../src/core/patch';
+import { patchFromState } from '../../src/state/patch-state';
 import { Store } from '../../src/state/store';
 
 const rest: SynthStep = { notes: [], length: 1 };
@@ -48,57 +47,65 @@ describe('SYNTH patterns', () => {
     expect(DEFAULT_SYNTH_PATTERN[0]?.notes).toHaveLength(3);
   });
 
-  it('shows ten note rows (highest on top) and DUR, with the length written on it', () => {
-    const pattern = patternOf({ 3: { notes: [0, 4, 9], length: 4 }, 6: { notes: [2] } });
-    const grid = gridFromSynthPattern(pattern);
-    expect(grid).toHaveLength(11);
-    expect(grid[rowOfNote(9)]?.[3]).toBe(true);
-    expect(grid[0]?.[3]).toBe(true); // note 9 is the top row
-    expect(grid[9]?.[3]).toBe(true); // note 0 is the bottom note row
-    expect(grid[SYNTH_DUR_ROW]?.[3]).toBe(true); // held 4 steps
-    expect(grid[SYNTH_DUR_ROW]?.[6]).toBe(false); // a single step
-    const labels = synthDurLabels(pattern);
-    expect(labels[3]).toBe('4');
-    expect(labels[6]).toBe('1');
-    expect(labels[0]).toBe('');
-  });
-
   describe('chords: up to three notes per step', () => {
-    it('adds notes in order and removes them on a second tap', () => {
-      let p = patternOf({});
-      p = toggleSynthCell(p, rowOfNote(4), 0);
-      p = toggleSynthCell(p, rowOfNote(0), 0);
-      p = toggleSynthCell(p, rowOfNote(7), 0);
-      expect(p[0]?.notes).toEqual([0, 4, 7]);
-      p = toggleSynthCell(p, rowOfNote(4), 0);
-      expect(p[0]?.notes).toEqual([0, 7]);
+    /** Taps the keys in order, keeping the age the store keeps. */
+    const tap = (p: SynthPattern, notes: number[], step = 0, age: readonly number[] = []) => {
+      let result = { pattern: p, age };
+      for (const note of notes) result = toggleSynthNote(result.pattern, step, note, result.age);
+      return result;
+    };
+
+    it('adds notes (kept sorted) and removes a lit one on a second tap', () => {
+      let r = tap(patternOf({}), [4, 0, 7]);
+      expect(r.pattern[0]?.notes).toEqual([0, 4, 7]);
+      r = tap(r.pattern, [4], 0, r.age);
+      expect(r.pattern[0]?.notes).toEqual([0, 7]);
     });
 
-    it('a fourth note replaces the closest one: never more than three', () => {
-      let p = patternOf({ 0: { notes: [0, 4, 8] } });
-      p = toggleSynthCell(p, rowOfNote(5), 0);
-      expect(p[0]?.notes).toEqual([0, 5, 8]);
-      expect(p[0]?.notes.length).toBeLessThanOrEqual(SYNTH_MAX_NOTES);
+    it('a fourth note replaces the OLDEST one, not the closest or the lowest', () => {
+      // Added 7, then 0, then 4: the oldest is 7 (the highest), so 7 goes.
+      const r = tap(patternOf({}), [7, 0, 4, 2]);
+      expect(r.pattern[0]?.notes).toEqual([0, 2, 4]);
+      // Then 9 takes the place of 0 (the oldest now), and 5 the place of 4.
+      const s = tap(r.pattern, [9, 5], 0, r.age);
+      expect(s.pattern[0]?.notes).toEqual([2, 5, 9]);
+      expect(s.pattern[0]?.notes.length).toBeLessThanOrEqual(SYNTH_MAX_NOTES);
+    });
+
+    it('a note taken out and added again becomes the newest', () => {
+      let r = tap(patternOf({}), [1, 2, 3]);
+      r = tap(r.pattern, [1, 1], 0, r.age); // out, then in again: now the order is 2, 3, 1
+      r = tap(r.pattern, [8], 0, r.age); // replaces 2
+      expect(r.pattern[0]?.notes).toEqual([1, 3, 8]);
+    });
+
+    it('a step whose notes the panel never saw (generated, loaded) loses its lowest note first', () => {
+      const r = toggleSynthNote(patternOf({ 0: { notes: [1, 4, 6] } }), 0, 9);
+      expect(r.pattern[0]?.notes).toEqual([4, 6, 9]);
+    });
+
+    it('edits one step only, keeps its length, and bad taps change nothing', () => {
+      const p = patternOf({ 3: { notes: [2], length: 4 } });
+      const r = toggleSynthNote(p, 3, 5);
+      expect(r.pattern[3]).toEqual({ notes: [2, 5], length: 4 });
+      expect(r.pattern.filter((_, i) => i !== 3)).toEqual(p.filter((_, i) => i !== 3));
+      expect(toggleSynthNote(p, 16, 0).pattern).toBe(p);
+      expect(toggleSynthNote(p, 0, SYNTH_STEPS).pattern).toBe(p);
+      expect(toggleSynthNote(p, 0, -1).pattern).toBe(p);
     });
   });
 
-  it('dims DURACIÓN on steps without notes; note rows never dim', () => {
-    const dimmed = synthDimmedCells(patternOf({ 4: { notes: [2] } }));
-    expect(dimmed[SYNTH_DUR_ROW]?.[4]).toBe(false);
-    expect(dimmed[SYNTH_DUR_ROW]?.filter(Boolean)).toHaveLength(15);
-    expect(dimmed.slice(0, SYNTH_DUR_ROW).flat().some(Boolean)).toBe(false);
-  });
-
-  it('DUR cycles 1, 2, 4, 8, 16 and back; bad coordinates change nothing', () => {
+  it('LARGO sets the length of a step: 1 to 4 from the panel, and 8 and 16 stay valid', () => {
     let p = patternOf({ 2: { notes: [3] } });
-    const seen: number[] = [];
-    for (let i = 0; i < SYNTH_LENGTHS.length; i++) {
-      p = toggleSynthCell(p, SYNTH_DUR_ROW, 2);
-      seen.push(p[2]!.length);
+    for (const length of SYNTH_PANEL_LENGTHS) {
+      p = setSynthLength(p, 2, length);
+      expect(p[2]?.length).toBe(length);
     }
-    expect(seen).toEqual([2, 4, 8, 16, 1]);
-    expect(toggleSynthCell(p, 11, 0)).toBe(p);
-    expect(toggleSynthCell(p, 0, 16)).toBe(p);
+    expect(setSynthLength(p, 2, 4)).toBe(p); // already 4
+    expect(setSynthLength(p, 2, 5)).toBe(p); // there is no 5
+    expect(setSynthLength(p, 16, 2)).toBe(p); // there is no step 17
+    expect(setSynthLength(p, 2, 16)[2]?.length).toBe(16);
+    expect(p[2]?.notes).toEqual([3]);
   });
 
   it.each(SYNTH_MODES)('%s is reproducible per seed and stays in range', (mode) => {
@@ -207,7 +214,7 @@ describe('SYNTH in the store', () => {
       store.randomizeSynth(() => (seed += 7919));
       const after = store.getState().synth;
       expect(after.generation).toBe(before.generation + 1);
-      expect(gridFromSynthPattern(after.pattern)).not.toEqual(gridFromSynthPattern(before.pattern));
+      expect(sameSynthGrid(after.pattern, before.pattern)).toBe(false);
       expect(after.pattern).toEqual(generateSynthPattern(after.mode, after.seed, 0.2));
     }
   });
@@ -223,9 +230,39 @@ describe('SYNTH in the store', () => {
     expect(store.getState().synth).toMatchObject({ preset: 'pad', pattern });
   });
 
-  it('hand edits keep the generation', () => {
-    store.toggleSynthStep(SYNTH_DUR_ROW, 0);
-    expect(store.getState().synth.pattern[0]?.length).toBe(4);
+  it('hand edits (a key, LARGO) keep the generation', () => {
+    store.setSynthLength(0, 3);
+    expect(store.getState().synth.pattern[0]?.length).toBe(3);
+    store.toggleSynthNote(1, 6);
+    expect(store.getState().synth.pattern[1]?.notes).toEqual([6]);
     expect(store.getState().synth.generation).toBe(0);
+  });
+
+  it('a fourth key replaces the oldest note, as the panel sees it', () => {
+    store.clearPattern('synth');
+    for (const note of [5, 1, 8]) store.toggleSynthNote(2, note);
+    store.toggleSynthNote(2, 3);
+    expect(store.getState().synth.pattern[2]?.notes).toEqual([1, 3, 8]); // 5 went: it was the first
+    store.toggleSynthNote(2, 8); // out
+    expect(store.getState().synth.pattern[2]?.notes).toEqual([1, 3]);
+  });
+
+  it('BORRAR and DICE forget the order of old taps', () => {
+    store.clearPattern('synth');
+    for (const note of [9, 0, 4]) store.toggleSynthNote(0, note);
+    store.clearPattern('synth');
+    for (const note of [0, 4, 9]) store.toggleSynthNote(0, note);
+    store.toggleSynthNote(0, 2);
+    expect(store.getState().synth.pattern[0]?.notes).toEqual([2, 4, 9]); // 0 was the oldest now
+  });
+
+  it('a patch keeps a step with a chord and a length of 3', () => {
+    store.toggleSynthNote(4, 2);
+    store.toggleSynthNote(4, 7);
+    store.setSynthLength(4, 3);
+    const patch = patchFromState(store.getState(), 'x', '');
+    const copy = new Store();
+    copy.loadPatch(parsePatchText(patchJson(patch)).patch);
+    expect(copy.getState().synth.pattern[4]).toEqual({ notes: [2, 7], length: 3 });
   });
 });

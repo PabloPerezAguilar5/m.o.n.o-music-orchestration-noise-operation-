@@ -141,12 +141,27 @@ for (const size of SIZES) {
       }
     });
 
-    test('la grilla alta (SYNTH) llega a la primera y a la ultima fila con el scroll de la zona', async ({ page }) => {
+    test('SYNTH: el teclado, los 16 pasos y LARGO se ven completos, sin scroll', async ({ page }) => {
       await openPanel(page, 'synth', null);
-      for (const key of ['[data-r="10"][data-c="15"]', '[data-r="0"][data-c="0"]']) {
-        const cell = page.locator(`mono-step-grid .st${key}`);
-        await cell.scrollIntoViewIfNeeded();
-        await expect(cell).toBeInViewport({ ratio: 0.9 });
+      // The zone holds the whole keyboard, the sixteen steps and LARGO: it has nothing to scroll.
+      const zone = page.locator('mono-panel .zn');
+      expect(await zone.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+      const parts = [
+        '.nk[data-note="0"]',
+        '.nk[data-note="9"]',
+        '.st[data-c="0"]',
+        '.st[data-c="15"]',
+        '[data-len="1"]',
+        '[data-len="4"]',
+        '#auto',
+      ];
+      for (const part of parts) await expect(page.locator(`mono-synth-notes ${part}`)).toBeInViewport({ ratio: 1 });
+      // Keys and buttons are for a finger: 44 px each way (the sixteen steps are exempt, see docs/LAYOUT.md).
+      for (const part of ['.nk', '[data-len]', '#auto']) {
+        for (const box of await page.locator(`mono-synth-notes ${part}`).evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()))) {
+          expect(box.width, part).toBeGreaterThanOrEqual(43.5);
+          expect(box.height, part).toBeGreaterThanOrEqual(43.5);
+        }
       }
     });
 

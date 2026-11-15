@@ -103,6 +103,27 @@ const KIT_808 = '[data-kit="samples808"]';
 const gridOf = (page: Page) =>
   page.locator('mono-step-grid .st').evaluateAll((keys) => keys.map((k) => (k.classList.contains('a') ? 1 : 0)).join(''));
 
+/** The SYNTH pattern as the store holds it, to compare with what the panel shows. */
+const synthPattern = (page: Page) =>
+  page.evaluate(
+    () =>
+      (
+        window as unknown as { __mono: { store: { getState(): { synth: { pattern: { notes: number[]; length: number }[] } } } } }
+      ).__mono.store.getState().synth.pattern,
+  );
+
+/** Keys of the SYNTH keyboard that are lit (scale steps, ascending). */
+const litNotes = (page: Page) =>
+  page
+    .locator('mono-synth-notes .nk')
+    .evaluateAll((keys) => keys.flatMap((key) => (key.classList.contains('on') ? [Number((key as HTMLElement).dataset.note)] : [])));
+
+/** The steps that show their LED on (they have notes). */
+const stepsWithNotes = (page: Page) =>
+  page
+    .locator('mono-synth-notes .st')
+    .evaluateAll((steps) => steps.flatMap((step) => (step.classList.contains('a') ? [Number((step as HTMLElement).dataset.c)] : [])));
+
 /** Waits until the master has been silent for a while (tails rung out). */
 async function waitSilence(page: Page): Promise<void> {
   await expect
@@ -660,56 +681,214 @@ test.describe('SYNTH', () => {
     expect(errors).toEqual([]);
   });
 
-  test('panel: sonidos, modos, DICE, acordes, duración y la tonalidad compartida con el BASS', async ({ page }) => {
+  test('panel: sonido, modos, DICE, teclado con nombres y la tonalidad compartida con el BASS', async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/');
     await addNode(page, 'synth');
     const lcd = page.locator('#lcd');
     await expect(lcd).toHaveText('SYNTH · PLUCK · C PENTA MENOR');
-    await expect(page.locator('mono-step-grid .st')).toHaveCount(11 * 16);
-    await expect(page.locator('mono-knob')).toHaveCount(7); // ONDA CUTOFF RESO ATAQUE RELEASE DETUNE + CAOS
+    // Not the old grid of 11 rows: a keyboard of ten keys and sixteen steps.
+    await expect(page.locator('mono-step-grid')).toHaveCount(0);
+    await expect(page.locator('mono-synth-notes .nk')).toHaveCount(10);
+    await expect(page.locator('mono-synth-notes .st')).toHaveCount(16);
+    await expect(page.locator('mono-knob')).toHaveCount(7); // ONDA DETUNE CUTOFF RESO ATAQUE RELEASE + CAOS
+    await expect(page.locator('mono-panel .kr h6')).toHaveText(['SONIDO', 'OSC', 'FILTRO', 'ENV', 'ESCALA', 'MODO', 'PATRÓN', 'MACRO']);
+    await expect(page.locator('mono-knob')).toHaveText(['ONDA', 'DETUNE', 'CUTOFF', 'RESO', 'ATAQUE', 'RELEASE', 'CAOS']);
 
-    // Sounds: one LED on.
+    // Ten notes of two octaves, lowest on the left, each with its name and octave.
+    const names = () => page.locator('mono-synth-notes .nk').allTextContents().then((all) => all.map((name) => name.trim()));
+    expect(await names()).toEqual(['C3', 'Eb3', 'F3', 'G3', 'Bb3', 'C4', 'Eb4', 'F4', 'G4', 'Bb4']);
+
+    // SONIDO: four names around one big knob; the knob moves to the next one.
     await expect(page.locator('[data-preset]')).toHaveText(['PLUCK', 'PAD', 'STAB', 'GLASS']);
     await page.click('[data-preset="pad"]');
     await expect(page.locator('[data-preset].on')).toHaveAttribute('data-preset', 'pad');
     await expect(lcd).toHaveText('SYNTH SONIDO PAD');
+    await page.click('#sound-dial');
+    await expect(page.locator('[data-preset].on')).toHaveAttribute('data-preset', 'stab');
+    await page.click('[data-preset="pluck"]');
+    await expect(lcd).toHaveText('SYNTH SONIDO PLUCK');
 
-    // DICE modes and DICE: a new pattern each time.
+    // DICE modes and DICE: a new pattern each time, and the steps with notes follow the pattern.
     await expect(page.locator('[data-mode]')).toHaveText(['ARPEGIO', 'ACORDES', 'MELODÍA', 'AMBIENTE']);
     await page.click('[data-mode="arp"]');
     await expect(page.locator('[data-mode].on')).toHaveAttribute('data-mode', 'arp');
-    let previous = await gridOf(page);
+    let previous = JSON.stringify(await synthPattern(page));
     for (let press = 0; press < 3; press++) {
       await page.click('#dice');
-      const next = await gridOf(page);
-      expect(next, `press ${press + 1}`).not.toBe(previous);
-      previous = next;
+      const pattern = await synthPattern(page);
+      expect(JSON.stringify(pattern), `press ${press + 1}`).not.toBe(previous);
+      previous = JSON.stringify(pattern);
+      expect(await stepsWithNotes(page)).toEqual(pattern.flatMap((step, i) => (step.notes.length > 0 ? [i] : [])));
     }
 
-    // A chord on step 2 (empty in AMBIENTE, whose chords fall on steps 1, 5, 9 and 13): three notes, then DUR.
-    await page.click('[data-mode="ambient"]');
-    for (const row of [9, 7, 5]) await expect(page.locator(`.st[data-r="${row}"][data-c="1"]`)).not.toHaveClass(/\ba\b/);
-    for (const row of [9, 7, 5]) await page.click(`.st[data-r="${row}"][data-c="1"]`);
-    for (const row of [9, 7, 5]) await expect(page.locator(`.st[data-r="${row}"][data-c="1"]`)).toHaveClass(/\ba\b/);
-    const dur = page.locator('.st[data-r="10"][data-c="1"]');
-    await expect(dur).toHaveText('1');
-    await expect(dur).not.toHaveClass(/\bdim\b/);
-    await dur.click();
-    await expect(dur).toHaveText('2');
-    // DURACIÓN is set apart from the notes and dims on steps without notes (step 3 here).
-    await expectGapBefore(page, 10);
-    await expect(page.locator('.st[data-r="10"][data-c="2"]')).toHaveClass(/\bdim\b/);
-
-    // Rows named after the key over two octaves; the key is shared with BASS.
-    const captions = await page.locator('mono-step-grid .sq > span:not(.nm)').allTextContents();
-    expect(captions.filter(Boolean)).toEqual(['Bb4', 'G4', 'F4', 'Eb4', 'C4', 'Bb3', 'G3', 'F3', 'Eb3', 'C3', 'DURACIÓN']);
+    // The key is shared with BASS: the key names follow it.
     await page.click('[data-root="1"]');
+    expect((await names())[0]).toBe('C#3');
     await addNode(page, 'bass');
     await expect(page.locator('#root')).toHaveText('C#');
     await expect(lcd).toHaveText('BASS · C# PENTA MENOR');
+    await page.click('#nd-synth');
+    expect((await names())[0]).toBe('C#3');
 
     expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    expect(errors).toEqual([]);
+  });
+
+  test('teclado: elegir un paso, armar un acorde de tres, reemplazar la más vieja, quitar; el patrón coincide con lo que se ve', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'synth');
+    await page.click('#clear'); // blank pattern
+    await expect(page.locator('mono-synth-notes .st.a')).toHaveCount(0);
+
+    const key = (note: number) => page.locator(`mono-synth-notes .nk[data-note="${note}"]`);
+    const step = (col: number) => page.locator(`mono-synth-notes .st[data-c="${col}"]`);
+    /** What the keys show for step 3 is what the saved pattern holds there. */
+    const expectChord = async (notes: number[]) => {
+      expect(await litNotes(page)).toEqual(notes);
+      expect((await synthPattern(page))[2]!.notes).toEqual(notes);
+    };
+
+    // Step 3: nothing lit yet.
+    await step(2).click();
+    await expect(step(2)).toHaveClass(/\bsel\b/);
+    await expect(page.locator('mono-synth-notes .st.sel')).toHaveCount(1);
+    await expect(page.locator('#step-readout')).toHaveText('PASO 3');
+    await expectChord([]);
+
+    // Three keys make a chord, in any order.
+    for (const note of [6, 1, 4]) await key(note).click();
+    await expectChord([1, 4, 6]);
+    await expect(step(2)).toHaveClass(/\ba\b/); // its LED is on now: it has notes
+    expect(await stepsWithNotes(page)).toEqual([2]);
+
+    // A fourth replaces the oldest one (6, the first that was tapped).
+    await key(9).click();
+    await expectChord([1, 4, 9]);
+    // And the next fourth replaces the next oldest (1).
+    await key(0).click();
+    await expectChord([0, 4, 9]);
+
+    // A lit key goes off.
+    await key(4).click();
+    await expectChord([0, 9]);
+    await expect(key(4)).not.toHaveClass(/\bon\b/);
+
+    // Lit keys are the node's colour, not the cream of the others.
+    const face = (note: number) => key(note).evaluate((el) => getComputedStyle(el).backgroundImage);
+    expect(await face(0)).not.toBe(await face(4));
+    expect(await face(0)).toContain('rgb(0, 255, 179)');
+
+    // Another step shows its own keys; coming back to step 3 shows its chord again.
+    await step(5).click();
+    expect(await litNotes(page)).toEqual([]);
+    await step(2).click();
+    await expectChord([0, 9]);
+
+    // The playhead runs over the steps without taking the selection away from step 3.
+    const playhead = () => page.locator('mono-synth-notes .st.ph').first().getAttribute('data-c');
+    const first = await playhead();
+    await expect.poll(playhead).not.toBe(first);
+    await expect(page.locator('mono-synth-notes .st.ph')).toHaveCount(1);
+    await expect(page.locator('mono-synth-notes .st.sel')).toHaveCount(1);
+    await expect(step(2)).toHaveClass(/\bsel\b/);
+    expect(errors).toEqual([]);
+  });
+
+  test('teclado: sin paso elegido la primera tecla elige el paso 1; AUTO pasa al paso siguiente', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'synth');
+    await page.click('#clear');
+    const key = (note: number) => page.locator(`mono-synth-notes .nk[data-note="${note}"]`);
+    const step = (col: number) => page.locator(`mono-synth-notes .st[data-c="${col}"]`);
+
+    // No step picked: LARGO is dimmed and does nothing.
+    await expect(page.locator('mono-synth-notes .st.sel')).toHaveCount(0);
+    await expect(page.locator('#step-readout')).toHaveText('SIN PASO');
+    await expect(page.locator('#length')).toHaveClass(/\bdim\b/);
+    await page.click('[data-len="3"]', { force: true }); // aria-disabled: there is no step to give a length to
+    expect((await synthPattern(page))[0]!.length).toBe(1);
+
+    // The first key picks step 1 and writes there.
+    await key(3).click();
+    await expect(step(0)).toHaveClass(/\bsel\b/);
+    expect((await synthPattern(page))[0]!.notes).toEqual([3]);
+    expect(await litNotes(page)).toEqual([3]);
+
+    // AUTO is off at the start; on, each key marks a note and moves to the next step.
+    await expect(page.locator('#auto')).toHaveAttribute('aria-pressed', 'false');
+    await page.click('#auto');
+    await expect(page.locator('#auto')).toHaveAttribute('aria-pressed', 'true');
+    await step(1).click();
+    for (const [index, note] of [2, 5, 7].entries()) {
+      await key(note).click();
+      await expect(step(index + 2)).toHaveClass(/\bsel\b/);
+    }
+    const pattern = await synthPattern(page);
+    expect(pattern.slice(0, 5).map((s) => s.notes)).toEqual([[3], [2], [5], [7], []]);
+    expect(await litNotes(page)).toEqual([]); // step 5 is blank
+    // After the last step it goes back to the first.
+    await step(15).click();
+    await key(0).click();
+    await expect(step(0)).toHaveClass(/\bsel\b/);
+    await page.click('#auto');
+    await expect(page.locator('#auto')).toHaveAttribute('aria-pressed', 'false');
+    expect(errors).toEqual([]);
+  });
+
+  test('LARGO edita el paso elegido con 1, 2, 3 o 4 y se atenúa en un paso sin notas', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'synth');
+    await page.click('#clear');
+    const step = (col: number) => page.locator(`mono-synth-notes .st[data-c="${col}"]`);
+    await expect(page.locator('[data-len]')).toHaveText(['1', '2', '3', '4']);
+
+    await step(4).click();
+    await expect(page.locator('#length')).toHaveClass(/\bdim\b/); // no notes yet
+    await page.locator('mono-synth-notes .nk[data-note="2"]').click();
+    await expect(page.locator('#length')).not.toHaveClass(/\bdim\b/);
+    await expect(page.locator('[data-len].on')).toHaveAttribute('data-len', '1');
+    for (const length of [3, 4, 2, 1]) {
+      await page.click(`[data-len="${length}"]`);
+      await expect(page.locator('[data-len].on')).toHaveAttribute('data-len', String(length));
+      expect((await synthPattern(page))[4]!.length).toBe(length);
+    }
+
+    // Another step has its own length, and the first one keeps its.
+    await page.click('[data-len="4"]');
+    await step(9).click();
+    await expect(page.locator('#length')).toHaveClass(/\bdim\b/);
+    await page.click('[data-len="2"]');
+    expect((await synthPattern(page))[9]!.length).toBe(2);
+    await step(4).click();
+    await expect(page.locator('[data-len].on')).toHaveAttribute('data-len', '4');
+    expect((await synthPattern(page)).map((s) => s.length).filter((n) => n !== 1)).toEqual([4, 2]);
+    expect(errors).toEqual([]);
+  });
+
+  test('cada tecla suena con el sonido actual aunque la reproducción esté parada, sin tocar el patrón', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/');
+    await addNode(page, 'synth');
+    await expect(page.locator('mono-app')).toHaveAttribute('audio-state', 'running');
+    await page.click('#play'); // stop
+    await expect(page.locator('#play')).not.toHaveClass(/on/);
+    await waitSilence(page);
+
+    await page.locator('mono-synth-notes .st[data-c="7"]').click(); // step 8 is blank in the default pattern
+    const before = JSON.stringify(await synthPattern(page));
+    await page.locator('mono-synth-notes .nk[data-note="4"]').click();
+    expect(await peakLevel(page)).toBeGreaterThan(0.01); // heard, with the transport stopped
+    await expect(page.locator('#play')).not.toHaveClass(/on/);
+    // A key turned off is heard too.
+    await waitSilence(page);
+    await page.locator('mono-synth-notes .nk[data-note="4"]').click();
+    expect(await peakLevel(page)).toBeGreaterThan(0.01);
+    // Only step 8 changed: the note came and went.
+    expect(JSON.stringify(await synthPattern(page))).toBe(before);
     expect(errors).toEqual([]);
   });
 });
@@ -773,16 +952,16 @@ test.describe('BORRAR', () => {
     await page.goto('/');
     for (const id of ['drum', 'bass', 'synth']) {
       await addNode(page, id);
-      await expect(page.locator('mono-step-grid .st.a').first()).toBeVisible();
+      await expect(page.locator('mono-step-grid .st.a, mono-synth-notes .st.a').first()).toBeVisible();
       await expect(page.locator('#clear')).toHaveText('BORRAR');
       await page.click('#clear');
-      await expect(page.locator('mono-step-grid .st.a')).toHaveCount(0);
+      await expect(page.locator('mono-step-grid .st.a, mono-synth-notes .st.a')).toHaveCount(0);
     }
     // Every pattern blank: once the tails ring out, silence.
     await waitSilence(page);
     // DICE fills it again.
     await page.click('#dice');
-    await expect(page.locator('mono-step-grid .st.a').first()).toBeVisible();
+    await expect(page.locator('mono-step-grid .st.a, mono-synth-notes .st.a').first()).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

@@ -70,6 +70,7 @@ export function linkAudio(
     if (cue.type === 'audition') backend.audition(cue.kit);
     else if (cue.type === 'loop-preview') backend.previewLoop(cue.loop);
     else if (cue.type === 'slice-preview') backend.previewSlice(cue.slice);
+    else if (cue.type === 'synth-preview') backend.previewSynth(cue.note);
   });
   const unsubscribeLive = live?.listen((event) => backend.perform(event));
   sync();

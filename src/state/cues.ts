@@ -12,6 +12,8 @@ export type Cue =
   | { readonly type: 'loop-preview'; readonly loop: BassLoop }
   /** Play one piece (0..15) of the BASS loop right away, to hear it. */
   | { readonly type: 'slice-preview'; readonly slice: number }
+  /** Play one note (a scale step, 0..9) of the SYNTH right away with its current sound, to hear it. */
+  | { readonly type: 'synth-preview'; readonly note: number }
   /** A line for the display (a cable made, or why it could not be). */
   | { readonly type: 'notice'; readonly text: string };
 

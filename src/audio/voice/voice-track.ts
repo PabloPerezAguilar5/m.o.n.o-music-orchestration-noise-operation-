@@ -60,6 +60,8 @@ export interface TrackSpec<S extends TrackScene> {
 export class VoiceTrack<S extends TrackScene> implements Track {
   module: VoiceModule | null = null;
   private playing: S | null = null;
+  /** Ids of hand-played notes: far above the sequencers' own counters. */
+  private previewId = 2 ** 30;
 
   constructor(private readonly spec: TrackSpec<S>) {}
 
@@ -110,6 +112,18 @@ export class VoiceTrack<S extends TrackScene> implements Track {
   drop(time: number): void {
     this.flush(time);
     this.module = null;
+  }
+
+  /**
+   * Plays one note by hand at `time`, released `hold` seconds later, on the same voices
+   * as the sequence (so the sound is the instrument's own). Its ids never meet a step's.
+   */
+  preview(midi: number, time: number, hold: number): void {
+    const id = this.previewId++;
+    this.module?.schedule([
+      { type: 'on', time, id, midi, accent: false, legato: false },
+      { type: 'off', time: time + hold, id },
+    ]);
   }
 
   /** Schedules one step. Returns whether a note started on it (the node lights up). */

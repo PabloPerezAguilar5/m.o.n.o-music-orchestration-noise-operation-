@@ -50,7 +50,7 @@ export const KNOB_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
  */
 export const ROW_LABELS: Readonly<Record<NodeId, readonly string[]>> = {
   master: [],
-  synth: ['DURACIÓN'],
+  synth: [],
   drum: ['KCK', 'SNR', 'HAT', 'PRC'],
   bass: ['SLIDE', 'ACCENT'],
   drone: [],
@@ -66,16 +66,14 @@ export const bassRowLabels = (root: number, scale: ScaleId): string[] => [
 ];
 
 /**
- * SYNTH grid captions: the ten notes of its two octaves with their octave number
- * (highest on top), then DURACIÓN.
+ * SYNTH keyboard captions: the ten notes of its two octaves with their octave number,
+ * lowest first (`Bb4`).
  */
-export const synthRowLabels = (root: number, scale: ScaleId): string[] => [
-  ...Array.from({ length: SYNTH_STEPS }, (_, row) => {
-    const midi = synthMidi(root, scale, SYNTH_STEPS - 1 - row);
+export const synthKeyNames = (root: number, scale: ScaleId): string[] =>
+  Array.from({ length: SYNTH_STEPS }, (_, note) => {
+    const midi = synthMidi(root, scale, note);
     return `${ROOTS[midi % 12]}${Math.floor(midi / 12) - 1}`;
-  }),
-  ...ROW_LABELS.synth,
-];
+  });
 
 export const SYNTH_MODE_LABELS: Readonly<Record<SynthMode, string>> = {
   arp: 'ARPEGIO',
@@ -163,6 +161,9 @@ export const SECTION_LABELS: Readonly<Record<string, string>> = {
   snare: 'SNR',
   hat: 'HAT',
   perc: 'PRC',
+  osc: 'OSC',
+  filter: 'FILTRO',
+  env: 'ENV',
 };
 
 /** Order of the DRUM kit keys (kit ids). Kits the manifest adds later go after these. */
@@ -306,6 +307,15 @@ export const TEXT = {
   stepRow: 'PASO',
   sliceHint: 'Pedazo',
   stepHint: 'Paso',
+  synthKeyHint: 'Nota',
+  synthStepsSection: 'PASOS',
+  lengthSection: 'LARGO',
+  lengthHint: 'Largo del paso elegido, en pasos',
+  lengthNoStep: 'Elegí un paso para cambiar su largo',
+  auto: 'AUTO',
+  autoHint: 'Auto: después de marcar una nota, pasa al paso siguiente',
+  noStep: 'SIN PASO',
+  soundDialHint: 'Sonido: tocá para cambiar',
   loading: 'CARGANDO',
   loadError: 'ERROR',
   noLoops: 'SIN LOOPS',

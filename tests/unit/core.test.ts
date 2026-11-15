@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pulsesAt } from '../../src/core/activity';
 import { DEFAULT_BASS_PATTERN, gridFromBassPattern } from '../../src/core/bass-patterns';
-import { DEFAULT_SYNTH_PATTERN, gridFromSynthPattern } from '../../src/core/synth-patterns';
 import { clampNodePosition, DEFAULT_POSITIONS, MASTER_POSITION } from '../../src/core/geometry';
 import { INSTRUMENT_IDS, isSequenced, NODE_IDS, NODE_SPECS, type NodeId } from '../../src/core/nodes';
 import { DEFAULT_PATTERNS, hasHitAt, STEPS, toggleStep } from '../../src/core/patterns';
@@ -16,9 +15,11 @@ describe('nodes', () => {
 
   it('gives every sequenced node pattern rows and no one else', () => {
     for (const id of NODE_IDS) {
-      const sequenced = NODE_SPECS[id].zone === 'sequencer';
+      const { zone, rows } = NODE_SPECS[id];
+      const sequenced = zone === 'sequencer' || zone === 'notes';
       expect(isSequenced(id)).toBe(sequenced);
-      expect(NODE_SPECS[id].rows.length > 0).toBe(sequenced);
+      // SYNTH's zone is a keyboard and sixteen steps: it has no grid rows of its own.
+      expect(rows.length > 0).toBe(zone === 'sequencer');
     }
   });
 });
@@ -27,9 +28,8 @@ describe('patterns', () => {
   it('ships 16-step defaults matching each node spec', () => {
     expect(DEFAULT_PATTERNS.drum).toHaveLength(NODE_SPECS.drum.rows.length);
     for (const row of DEFAULT_PATTERNS.drum) expect(row).toHaveLength(STEPS);
-    // BASS and SYNTH have their own pattern types; their grid views have one row per spec row.
+    // BASS has its own pattern type; its grid view has one row per spec row.
     expect(gridFromBassPattern(DEFAULT_BASS_PATTERN)).toHaveLength(NODE_SPECS.bass.rows.length);
-    expect(gridFromSynthPattern(DEFAULT_SYNTH_PATTERN)).toHaveLength(NODE_SPECS.synth.rows.length);
   });
 
   it('toggles one step without mutating the original', () => {

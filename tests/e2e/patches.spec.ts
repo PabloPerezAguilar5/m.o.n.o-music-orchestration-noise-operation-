@@ -84,6 +84,60 @@ test('guardar un patch, recargar (la sesión vuelve) y cargarlo desde LOAD; reno
   await expect(page.locator('mono-tempo')).toBeVisible();
 });
 
+test('SYNTH: SAVE, recargar y LOAD devuelven las teclas encendidas del paso 3', async ({ page }) => {
+  await page.goto('/');
+  await addNode(page, 'synth');
+  await page.click('#clear');
+  const step3 = page.locator('mono-synth-notes .st[data-c="2"]');
+  const lit = () =>
+    page
+      .locator('mono-synth-notes .nk')
+      .evaluateAll((keys) => keys.flatMap((key) => (key.classList.contains('on') ? [Number((key as HTMLElement).dataset.note)] : [])));
+  const stored = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __mono: { store: { getState(): { synth: { pattern: { notes: number[]; length: number }[] } } } } }).__mono.store.getState().synth.pattern[2],
+    );
+
+  // A chord of three notes held for three steps, on step 3.
+  await step3.click();
+  for (const note of [8, 1, 5]) await page.locator(`mono-synth-notes .nk[data-note="${note}"]`).click();
+  await page.click('[data-len="3"]');
+  expect(await lit()).toEqual([1, 5, 8]);
+  expect(await stored()).toEqual({ notes: [1, 5, 8], length: 3 });
+
+  await page.click('#play'); // stop
+  await page.click('#nd-master');
+  await page.click('#patch-save');
+  await page.locator('#patch-name').fill('Acorde');
+  await page.locator('#patch-name').press('Enter');
+  await expect(page.locator('#lcd')).toHaveText('GUARDADO · Acorde');
+
+  // Wipe the pattern and reload: the session comes back with an empty step 3.
+  await page.click('#nd-synth');
+  await page.click('#clear');
+  await page.waitForTimeout(1500); // autosave
+  await page.reload();
+  await expect(page.locator('#lcd')).toHaveText('SESIÓN RESTAURADA · TOCÁ PLAY PARA SEGUIR');
+  await page.click('#nd-synth');
+  await step3.click();
+  expect(await lit()).toEqual([]);
+  await expect(step3).not.toHaveClass(/\ba\b/);
+
+  // LOAD brings the patch back: step 3 shows its three keys lit again, with their length.
+  await page.click('#nd-master');
+  await page.click('#patch-load');
+  await page.click('[data-open]');
+  await expect(page.locator('#lcd')).toHaveText('CARGADO · Acorde');
+  await page.click('#nd-synth');
+  await step3.click();
+  await expect(page.locator('mono-synth-notes .nk.on')).toHaveCount(3);
+  expect(await lit()).toEqual([1, 5, 8]);
+  await expect(step3).toHaveClass(/\ba\b/);
+  await expect(page.locator('[data-len].on')).toHaveAttribute('data-len', '3');
+  expect(await stored()).toEqual({ notes: [1, 5, 8], length: 3 });
+});
+
 test('SHARE copia un link que abre el mismo patch en otro contexto, sin audio hasta tocar', async ({ page, browser }) => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');

@@ -61,7 +61,7 @@ test.describe('lienzo', () => {
 
     // The playhead moves across the sequencer.
     const playheadColumn = () => page.locator('.st.ph').first().getAttribute('data-c');
-    await expect(page.locator('.st.ph')).toHaveCount(11); // one key per row of the SYNTH grid
+    await expect(page.locator('.st.ph')).toHaveCount(1); // one of the 16 steps of the SYNTH
     const before = await playheadColumn();
     await expect.poll(playheadColumn).not.toBe(before);
   });
@@ -162,7 +162,7 @@ test.describe('panel', () => {
 
   test('cada nodo muestra sus perillas y su zona', async ({ page }) => {
     const expected = {
-      synth: { knobs: 6, zone: 'mono-step-grid' },
+      synth: { knobs: 6, zone: 'mono-synth-notes' }, // ONDA DETUNE CUTOFF RESO ATAQUE RELEASE; the sound is a dial
       drum: { knobs: 8, zone: 'mono-step-grid' }, // TONO and VOL per row
       bass: { knobs: 4, zone: 'mono-step-grid' },
       drone: { knobs: 5, zone: 'mono-xy-pad' }, // FILTRO ATAQUE RELEASE DESAF. VOL
@@ -182,7 +182,8 @@ test.describe('panel', () => {
     await page.click('#nd-drum');
     await expect(page.locator('.st')).toHaveCount(4 * 16);
     await page.click('#nd-synth');
-    await expect(page.locator('.st')).toHaveCount(11 * 16); // ten notes over two octaves and DUR
+    await expect(page.locator('.st')).toHaveCount(16); // sixteen steps, and a keyboard of ten notes
+    await expect(page.locator('.nk')).toHaveCount(10);
   });
 
   test('una perilla gira al arrastrar, se lee en el display y conserva su valor', async ({

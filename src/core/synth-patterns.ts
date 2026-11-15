@@ -1,4 +1,3 @@
-import type { Pattern } from './patterns';
 import { STEPS } from './patterns';
 import { createRng, streamSeed, type RandomSource } from './random';
 import { DEGREES, SYNTH_STEPS } from './scales';
@@ -20,18 +19,16 @@ export interface SynthStep {
 export type SynthPattern = readonly SynthStep[];
 
 export const SYNTH_MAX_NOTES = 3;
-/** Lengths the DUR row cycles through, in steps. */
-export const SYNTH_LENGTHS = [1, 2, 4, 8, 16] as const;
+/**
+ * Lengths a step may have, in steps. The panel's LARGO offers the first four; DICE
+ * (AMBIENTE) makes 8 and 16, and saved patches may hold any of them.
+ */
+export const SYNTH_LENGTHS = [1, 2, 3, 4, 8, 16] as const;
+/** What the LARGO keys of the panel set. */
+export const SYNTH_PANEL_LENGTHS = [1, 2, 3, 4] as const;
 
 export const SYNTH_MODES = ['arp', 'chords', 'melody', 'ambient'] as const;
 export type SynthMode = (typeof SYNTH_MODES)[number];
-
-/** Grid rows: the ten notes (highest on top), then DUR. */
-export const SYNTH_DUR_ROW = SYNTH_STEPS;
-export const SYNTH_GRID_ROWS = SYNTH_STEPS + 1;
-
-export const rowOfNote = (note: number): number => SYNTH_STEPS - 1 - note;
-export const noteOfRow = (row: number): number => SYNTH_STEPS - 1 - row;
 
 const REST: SynthStep = { notes: [], length: 1 };
 
@@ -58,54 +55,41 @@ export const DEFAULT_SYNTH_PATTERN: SynthPattern = (() => {
   return Array.from({ length: STEPS }, (_, step) => ({ notes: notes[step] ?? [], length: step === 0 || step === 10 ? 2 : 1 }));
 })();
 
-/** On/off view for the step grid: ten note rows, then DUR (lit when a note is held more than a step). */
-export function gridFromSynthPattern(pattern: SynthPattern): Pattern {
-  return Array.from({ length: SYNTH_GRID_ROWS }, (_, row) =>
-    pattern.map((step) =>
-      row === SYNTH_DUR_ROW ? step.notes.length > 0 && step.length > 1 : step.notes.includes(noteOfRow(row)),
-    ),
-  );
-}
-
-/** Cells shown dimmed on the grid: the length row on steps without notes (it does nothing there). */
-export function synthDimmedCells(pattern: SynthPattern): Pattern {
-  return Array.from({ length: SYNTH_GRID_ROWS }, (_, row) =>
-    pattern.map((step) => row === SYNTH_DUR_ROW && step.notes.length === 0),
-  );
-}
-
-/** Text inside the DUR keys: the length of every step that plays. */
-export function synthDurLabels(pattern: SynthPattern): string[] {
-  return pattern.map((step) => (step.notes.length > 0 ? String(step.length) : ''));
-}
-
 /**
- * A tap on the grid. On a note row: adds that note to the step's chord, or removes it.
- * A fourth note replaces the closest one in the chord (moving that chord tone). On DUR:
- * the next length (1, 2, 4, 8, 16, back to 1).
+ * A tap on a key of the keyboard, for the step being edited. A lit key goes off. An off
+ * key joins the chord; a fourth note replaces the oldest one.
+ *
+ * Patterns keep their notes sorted, not in the order they were added, so "oldest" comes
+ * from `age` (the step's notes, oldest first, as the panel has seen them). A note `age`
+ * does not know (a generated or loaded pattern) counts as older than all that it does,
+ * lowest first. Returns the new pattern and the `age` to pass on the next tap.
  */
-export function toggleSynthCell(pattern: SynthPattern, row: number, col: number): SynthPattern {
-  const step = pattern[col];
-  if (!step || !Number.isInteger(row) || row < 0 || row >= SYNTH_GRID_ROWS) return pattern;
-  let next: SynthStep;
-  if (row === SYNTH_DUR_ROW) {
-    const index = SYNTH_LENGTHS.indexOf(step.length as (typeof SYNTH_LENGTHS)[number]);
-    next = { ...step, length: SYNTH_LENGTHS[(index + 1) % SYNTH_LENGTHS.length]! };
-  } else {
-    const note = noteOfRow(row);
-    if (step.notes.includes(note)) {
-      next = { ...step, notes: step.notes.filter((n) => n !== note) };
-    } else if (step.notes.length < SYNTH_MAX_NOTES) {
-      next = { ...step, notes: chord([...step.notes, note]) };
-    } else {
-      const closest = step.notes.reduce((best, n) => (Math.abs(n - note) < Math.abs(best - note) ? n : best));
-      next = { ...step, notes: chord([...step.notes.filter((n) => n !== closest), note]) };
-    }
-  }
-  return pattern.map((current, i) => (i === col ? next : current));
+export function toggleSynthNote(
+  pattern: SynthPattern,
+  index: number,
+  note: number,
+  age: readonly number[] = [],
+): { pattern: SynthPattern; age: readonly number[] } {
+  const step = pattern[index];
+  if (!step || !Number.isInteger(note) || note < 0 || note >= SYNTH_STEPS) return { pattern, age };
+  const oldestFirst = [...step.notes].sort((a, b) => age.indexOf(a) - age.indexOf(b) || a - b);
+  const next = step.notes.includes(note)
+    ? oldestFirst.filter((n) => n !== note)
+    : [...(oldestFirst.length < SYNTH_MAX_NOTES ? oldestFirst : oldestFirst.slice(1)), note];
+  return {
+    pattern: pattern.map((current, i) => (i === index ? { ...step, notes: chord(next) } : current)),
+    age: next,
+  };
 }
 
-/** Whether two patterns look the same on the grid (notes and lengths). */
+/** LARGO: how many steps the notes of a step are held. A length that does not exist changes nothing. */
+export function setSynthLength(pattern: SynthPattern, index: number, length: number): SynthPattern {
+  const step = pattern[index];
+  if (!step || step.length === length || !(SYNTH_LENGTHS as readonly number[]).includes(length)) return pattern;
+  return pattern.map((current, i) => (i === index ? { ...step, length } : current));
+}
+
+/** Whether two patterns sound the same (notes and lengths). */
 export const sameSynthGrid = (a: SynthPattern, b: SynthPattern): boolean =>
   a.length === b.length &&
   a.every((step, i) => {

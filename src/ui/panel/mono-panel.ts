@@ -44,15 +44,7 @@ import {
   type SliceDiceMode,
   type SliceParam,
 } from '../../core/slice';
-import {
-  gridFromSynthPattern,
-  synthDimmedCells,
-  SYNTH_DUR_ROW,
-  SYNTH_MODES,
-  synthDurLabels,
-  type SynthMode,
-  type SynthPattern,
-} from '../../core/synth-patterns';
+import { SYNTH_MODES, type SynthMode } from '../../core/synth-patterns';
 import { SYNTH_PRESETS, type SynthPreset } from '../../core/synth-voices';
 import { cues, live, patches, pulse, sliceMonitor, store } from '../../state';
 import type { Cue } from '../../state/cues';
@@ -81,7 +73,7 @@ import {
   SECTION_LABELS,
   SYNTH_MODE_LABELS,
   SYNTH_PRESET_LABELS,
-  synthRowLabels,
+  synthKeyNames,
   TEXT,
 } from '../labels';
 import { Selector } from '../store-controller';
@@ -91,8 +83,12 @@ import './mono-keys';
 import type { KeyDownEvent, KeyUpEvent } from './mono-keys';
 import './mono-knob';
 import type { KnobInputEvent } from './mono-knob';
+import './mono-sound-dial';
+import type { DialPickEvent } from './mono-sound-dial';
 import './mono-step-grid';
 import type { StepToggleEvent } from './mono-step-grid';
+import './mono-synth-notes';
+import type { LengthSetEvent, NoteTapEvent } from './mono-synth-notes';
 import './mono-tempo';
 import type { TempoNudgeEvent, TempoSetEvent } from './mono-tempo';
 import './mono-type-switch';
@@ -473,6 +469,20 @@ export class MonoPanel extends LitElement {
         }
       }
 
+      /* SYNTH has eight groups in its row of knobs: on medium widths, tighter gaps so none gets squeezed.
+         (Short screens lay the knobs out in a column instead; see below.) */
+      @media (max-width: 1100px) and (min-height: 601px) {
+        .kr.tight {
+          gap: 6px;
+        }
+        .kr.tight .kk {
+          gap: 6px;
+        }
+        .kr.tight h6 {
+          padding: 2px 4px;
+        }
+      }
+
       /* Short screens (a phone on its side). The knobs move to a column at the left of
          the zone; both scroll on their own when they do not fit, and every control is
          at least 44 px (--ks is 44 px here, see global.css). Taller screens are untouched.
@@ -652,8 +662,6 @@ export class MonoPanel extends LitElement {
   private readonly params = new Selector(this, store, (s) => s.params);
   private readonly key = new Selector(this, store, (s) => s.key);
   private readonly synth = new Selector(this, store, (s) => s.synth);
-  /** On/off view of the SYNTH pattern, recomputed only when the pattern changes. */
-  private synthGrid: { pattern: SynthPattern; grid: Pattern; dimmed: Pattern } | null = null;
   private readonly lead = new Selector(this, store, (s) => s.lead);
   private readonly drone = new Selector(this, store, (s) => s.drone);
   /** What is being played by hand: LEAD keys down, DRONE layers. */
@@ -744,7 +752,8 @@ export class MonoPanel extends LitElement {
           : nothing}
       </div>
       <div class="plate">
-        <div class="kr">
+        <div class=${id === 'synth' ? 'kr tight' : 'kr'}>
+          ${id === 'synth' ? this.soundDial() : nothing}
           ${sections.map(
             (section) => html`<section data-section=${section.id}>
               <h6>${SECTION_LABELS[section.id] ?? NODE_NAMES[id]}</h6>
@@ -857,6 +866,8 @@ export class MonoPanel extends LitElement {
 
   /** Knob name for the display; prefixed with its group when the node has several (DRUM: "SNR VOL"). */
   private readingLabel(id: NodeId, param: string, label: string): string {
+    // Only DRUM's groups name a voice (KCK, SNR...); SYNTH's OSC, FILTRO and ENV are just headers.
+    if (id !== 'drum') return label;
     const section = NODE_SPECS[id].sections?.find((s) => s.params.includes(param));
     const group = section ? SECTION_LABELS[section.id] : undefined;
     return group ? `${group} ${label}` : label;
@@ -1033,13 +1044,6 @@ export class MonoPanel extends LitElement {
     return this.bassGrid!;
   }
 
-  private synthGridFor(pattern: SynthPattern): { grid: Pattern; dimmed: Pattern } {
-    if (this.synthGrid?.pattern !== pattern) {
-      this.synthGrid = { pattern, grid: gridFromSynthPattern(pattern), dimmed: synthDimmedCells(pattern) };
-    }
-    return this.synthGrid;
-  }
-
   /** The step grid of a sequenced node: on/off cells, dimmed cells, where the gap goes. */
   private gridOf(id: NodeId): { grid: Pattern; dimmed: Pattern | null; split: number | null } {
     if (id === 'drum') return { grid: this.drumGridFor(this.drum.value.pattern), dimmed: null, split: null };
@@ -1047,7 +1051,6 @@ export class MonoPanel extends LitElement {
       const { pattern, slides } = this.bass.value;
       return { ...this.bassGridFor(pattern, slides), split: BASS_SLIDE_ROW };
     }
-    if (id === 'synth') return { ...this.synthGridFor(this.synth.value.pattern), split: SYNTH_DUR_ROW };
     return { grid: [], dimmed: null, split: null };
   }
 
@@ -1101,13 +1104,27 @@ export class MonoPanel extends LitElement {
     ];
   }
 
-  /** SYNTH: SONIDO (presets), ESCALA (the shared key), MODO (DICE styles) and DICE. */
+  /** SYNTH: SONIDO, the big selector with its four names around it; it comes before the knobs. */
+  private soundDial(): TemplateResult {
+    return html`<section data-section="sound">
+      <h6>${TEXT.soundSection}</h6>
+      <div class="kk dial">
+        <mono-sound-dial
+          .ids=${SYNTH_PRESETS}
+          .labels=${SYNTH_PRESET_LABELS}
+          .value=${this.synth.value.preset}
+          .caption=${TEXT.soundHint}
+          .hint=${TEXT.soundDialHint}
+          @dial-pick=${this.onDialPick}
+        ></mono-sound-dial>
+      </div>
+    </section>`;
+  }
+
+  /** SYNTH: ESCALA (the shared key), MODO (DICE styles) and DICE; SONIDO and the knobs come first. */
   private synthKeys(): TemplateResult[] {
-    const { preset, mode } = this.synth.value;
+    const { mode } = this.synth.value;
     return [
-      this.ledKeys('sound', TEXT.soundSection, 'quad', SYNTH_PRESETS, SYNTH_PRESET_LABELS, preset, (p) =>
-        this.onPreset(p),
-      ),
       this.keySection(),
       this.ledKeys('mode', TEXT.modeSection, 'quad', SYNTH_MODES, SYNTH_MODE_LABELS, mode, (m) => this.onSynthMode(m)),
       this.diceSection(this.onSynthDice, this.clearKey()),
@@ -1293,11 +1310,18 @@ export class MonoPanel extends LitElement {
           .pattern=${grid}
           .dimmed=${dimmed}
           .split=${split}
-          .texts=${id === 'synth' ? { row: SYNTH_DUR_ROW, values: synthDurLabels(this.synth.value.pattern) } : null}
           .step=${this.step.value}
           @step-toggle=${this.onStepToggle}
         ></mono-step-grid>`;
       }
+      case 'notes':
+        return html`<mono-synth-notes
+          .pattern=${this.synth.value.pattern}
+          .names=${synthKeyNames(this.key.value.root, this.key.value.scale)}
+          .step=${this.step.value}
+          @note-tap=${this.onSynthNote}
+          @length-set=${this.onSynthLength}
+        ></mono-synth-notes>`;
       case 'xy':
         return html`<mono-xy-pad
           .dots=${this.padDots()}
@@ -1400,7 +1424,6 @@ export class MonoPanel extends LitElement {
   private rowLabels(id: NodeId): readonly string[] {
     const { root, scale } = this.key.value;
     if (id === 'bass') return bassRowLabels(root, scale);
-    if (id === 'synth') return synthRowLabels(root, scale);
     return ROW_LABELS[id];
   }
 
@@ -1439,7 +1462,6 @@ export class MonoPanel extends LitElement {
     const { row, col } = event.detail;
     if (id === 'drum') store.toggleDrumStep(row, col);
     else if (id === 'bass') store.toggleBassStep(row, col);
-    else store.toggleSynthStep(row, col);
     pulse(id, PULSE_MS.step);
   };
 
@@ -1542,6 +1564,25 @@ export class MonoPanel extends LitElement {
     store.setSynthMode(mode);
     this.reading = `${NODE_NAMES.synth} ${TEXT.modeSection} ${SYNTH_MODE_LABELS[mode]}`;
   }
+
+  /** A key of the SYNTH keyboard: the step's chord changes, and the note is heard whatever the transport does. */
+  private readonly onSynthNote = (event: NoteTapEvent): void => {
+    const { step, note } = event.detail;
+    store.toggleSynthNote(step, note);
+    cues.send({ type: 'synth-preview', note });
+    pulse('synth', PULSE_MS.step);
+    const { root, scale } = this.key.value;
+    this.reading = `${NODE_NAMES.synth} ${TEXT.stepHint.toUpperCase()} ${step + 1} ${synthKeyNames(root, scale)[note] ?? ''}`;
+  };
+
+  private readonly onSynthLength = (event: LengthSetEvent): void => {
+    const { step, length } = event.detail;
+    store.setSynthLength(step, length);
+    pulse('synth', PULSE_MS.step);
+    this.reading = `${NODE_NAMES.synth} ${TEXT.stepHint.toUpperCase()} ${step + 1} ${TEXT.lengthSection} ${length}`;
+  };
+
+  private readonly onDialPick = (event: DialPickEvent): void => this.onPreset(event.detail.id as SynthPreset);
 
   private onPreset(preset: SynthPreset): void {
     store.setSynthPreset(preset);

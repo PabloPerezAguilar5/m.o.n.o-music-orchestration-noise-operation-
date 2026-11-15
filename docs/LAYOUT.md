@@ -31,20 +31,20 @@ Todos se ven completos o con scroll interno, sin cortar una fila a la mitad
 DRUM, BASS en SYNTH y en SLICE, SYNTH, LEAD, DRONE, DISTORSION y LFO):
 
 - **Con scroll vertical interno**: la columna de perillas de todos los nodos con muchas
-  secciones (DRUM, BASS, SYNTH, MASTER...); la grilla de SYNTH (11 filas) y de BASS;
+  secciones (DRUM, BASS, SYNTH, MASTER...); la grilla de BASS;
   la zona de SLICE (lista de loops, onda y pasos); la lista de LOAD.
-- **Su zona entra sin scroll**: LEAD (teclado), DRONE (pad), DISTORSION (tres teclas), LFO
-  (pantalla de la onda) y la grilla de DRUM. La columna de perillas de cada uno si puede
+- **Su zona entra sin scroll**: SYNTH (teclado, 16 pasos, LARGO y AUTO), LEAD (teclado), DRONE
+  (pad), DISTORSION (tres teclas), LFO (pantalla de la onda) y la grilla de DRUM. La columna de perillas de cada uno si puede
   scrollear.
 
 ## Decisiones donde el enunciado era ambiguo
 
 1. **Teclas de la grilla de pasos y piezas de la onda de SLICE: menos de 44 px.** Son
    16 columnas; a 844 px de ancho, con la columna de perillas, cada una mide unos
-   33 px de ancho. Alto: 34 px (28 px con mas de 8 filas, SYNTH). Todo lo demas
+   33 px de ancho. Alto: 34 px. Los 16 pasos del SYNTH son iguales (34 px de alto, unos 26 px de
+   ancho a 740 px). Todo lo demas
    (perillas, teclas, teclas del teclado, items de lista, botones del tempo, play,
-   +, chips del menu) mide 44 px o mas. Si hiciera falta 44 px tambien en los pasos,
-   la grilla de SYNTH pasaria a 11 x 44 px de alto y habria que desplazarse mas.
+   +, chips del menu, teclas del teclado del SYNTH, LARGO y AUTO) mide 44 px o mas.
 2. **La X de quitar nodo se ve de 26x22 px** (igual que en pantalla alta) pero responde
    en un area de 44x44 px.
 3. **"Pantalla baja" se decide por el alto de la ventana** (600 px), no por el ancho ni

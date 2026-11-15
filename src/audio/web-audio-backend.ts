@@ -13,6 +13,7 @@ import { clickAt } from '../core/metronome';
 import { DRUM_ROWS, type NodeId } from '../core/nodes';
 import type { Link } from '../core/routing';
 import { LookaheadScheduler, type ScheduledStep } from '../core/scheduler';
+import { synthMidi } from '../core/scales';
 import { loopId, type BassLoop } from '../core/slice';
 import { startTicker, type AudioTicker } from './audio-clock';
 import type {
@@ -50,6 +51,8 @@ const START_DELAY = 0.05;
 const TICK_QUANTA = 4;
 /** A kit's sample hit, when its key is touched: a little after now, at this velocity. */
 const AUDITION_DELAY = 0.01;
+/** How long a SYNTH note tried by hand is held before its release, seconds. */
+const SYNTH_PREVIEW_HOLD = 0.5;
 const AUDITION_VELOCITY = 0.9;
 
 const MASTER = 'master';
@@ -134,8 +137,10 @@ export class WebAudioBackend implements AudioBackend {
     },
     () => this.voiceLoad === 'ready',
   );
+  /** SYNTH: four voices on the shared engine; its notes come from the pattern and from the keyboard. */
+  private readonly synth = new VoiceTrack(synthTrackSpec());
   /** BASS and SYNTH, the sequenced voices. */
-  private readonly tracks: readonly Track[] = [this.bass, new VoiceTrack(synthTrackSpec())];
+  private readonly tracks: readonly Track[] = [this.bass, this.synth];
   /** The bass loops, decoded on demand. */
   private loops: SliceLibrary | null = null;
   /** Loop waiting to be heard (it may still be decoding). */
@@ -249,6 +254,14 @@ export class WebAudioBackend implements AudioBackend {
   previewLoop(loop: BassLoop): void {
     this.pendingLoopPreview = loop;
     this.playLoopPreview();
+  }
+
+  previewSynth(note: number): void {
+    const context = this.context;
+    const scene = this.scene;
+    if (!this.initialized || !context || !scene) return;
+    const { root, scale } = scene.synth;
+    this.synth.preview(synthMidi(root, scale, note), context.currentTime + AUDITION_DELAY, SYNTH_PREVIEW_HOLD);
   }
 
   previewSlice(slice: number): void {
