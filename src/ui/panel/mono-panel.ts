@@ -105,6 +105,9 @@ import type { SliceActionEvent } from './mono-slicer';
 import './mono-xy-pad';
 import type { PadDot, PadDownEvent, PadUpEvent } from './mono-xy-pad';
 
+/** How long CLEAR waits for its second press before going back to CLEAR. */
+const CLEAR_CONFIRM_MS = 3000;
+
 /** How long the node lights up after each kind of gesture. */
 const PULSE_MS = { knob: 200, step: 200, type: 300 } as const;
 
@@ -289,6 +292,11 @@ export class MonoPanel extends LitElement {
       .pk:disabled {
         opacity: 0.45;
         cursor: default;
+      }
+      /* A destructive key waiting for its second press (CLEAR: SEGURO?). */
+      .pk.armed {
+        color: #5a0f0f;
+        box-shadow: inset 0 3px 0 #b3261e;
       }
       .pk:active:not(:disabled) {
         box-shadow: inset 0 3px 0 var(--c);
@@ -678,6 +686,9 @@ export class MonoPanel extends LitElement {
   private readonly patchList = new Selector(this, patches, (s) => s);
   @state() private naming = false;
   @state() private loadOpen = false;
+  /** CLEAR was pressed once and waits for a second press (for a few seconds). */
+  @state() private clearArmed = false;
+  private clearTimer: ReturnType<typeof setTimeout> | null = null;
   @query('#patch-name') private nameInput?: HTMLInputElement;
 
   override connectedCallback(): void {
@@ -692,6 +703,7 @@ export class MonoPanel extends LitElement {
     super.disconnectedCallback();
     this.unlistenCues?.();
     this.unlistenCues = null;
+    this.disarmClear();
   }
 
   protected override willUpdate(_changed: PropertyValues): void {
@@ -701,6 +713,7 @@ export class MonoPanel extends LitElement {
     this.reading = null;
     this.naming = false;
     this.loadOpen = false;
+    this.disarmClear();
     this.style.setProperty('--c', NODE_COLORS[id]);
   }
 
@@ -933,13 +946,13 @@ export class MonoPanel extends LitElement {
   /** MASTER: PATCH, five keys: SAVE, LOAD (lit while its list is open), SHARE, EXPORT, IMPORT. */
   private patchKeys(): TemplateResult {
     const key = (
-      action: 'save' | 'load' | 'share' | 'export' | 'import',
+      action: 'save' | 'load' | 'share' | 'export' | 'import' | 'clear',
       label: string,
       hint: string,
       led = false,
     ): TemplateResult =>
       html`<button
-        class=${classMap({ pk: true, led, on: led && this.loadOpen })}
+        class=${classMap({ pk: true, led, on: led && this.loadOpen, armed: action === 'clear' && this.clearArmed })}
         id="patch-${action}"
         data-patch=${action}
         aria-label=${hint}
@@ -954,6 +967,9 @@ export class MonoPanel extends LitElement {
         ${key('save', TEXT.save, TEXT.saveHint)} ${key('load', TEXT.load, TEXT.loadHint, true)}
         ${key('share', TEXT.share, TEXT.shareHint)} ${key('export', TEXT.export, TEXT.exportHint)}
         ${key('import', TEXT.import, TEXT.importHint)}
+        ${this.clearArmed
+          ? key('clear', TEXT.clearCanvasSure, TEXT.clearCanvasSureHint)
+          : key('clear', TEXT.clearCanvas, TEXT.clearCanvasHint)}
       </div>
     </section>`;
   }
@@ -1556,8 +1572,30 @@ export class MonoPanel extends LitElement {
 
   // PATCH ---------------------------------------------------------------------------------------
 
-  private onPatchKey(action: 'save' | 'load' | 'share' | 'export' | 'import'): void {
+  /** CLEAR twice (within CLEAR_CONFIRM_MS) empties the canvas; the first press only asks. */
+  private readonly onClearCanvas = (): void => {
+    if (!this.clearArmed) {
+      this.clearArmed = true;
+      this.clearTimer = setTimeout(() => this.disarmClear(), CLEAR_CONFIRM_MS);
+      return;
+    }
+    this.disarmClear();
+    this.loadOpen = false;
+    this.naming = false;
+    void patches.clearCanvas();
+  };
+
+  private disarmClear(): void {
+    if (this.clearTimer !== null) clearTimeout(this.clearTimer);
+    this.clearTimer = null;
+    this.clearArmed = false;
+  }
+
+  private onPatchKey(action: 'save' | 'load' | 'share' | 'export' | 'import' | 'clear'): void {
     switch (action) {
+      case 'clear':
+        this.onClearCanvas();
+        break;
       case 'save':
         this.loadOpen = false;
         this.naming = true;

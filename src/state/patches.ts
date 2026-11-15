@@ -53,6 +53,7 @@ export const PATCH_TEXT = {
   deleted: 'BORRADO',
   notFound: 'ESE PATCH YA NO ESTÁ',
   linkCopied: 'LINK COPIADO',
+  cleared: 'LIENZO VACÍO',
   linkTooLong: 'LINK DEMASIADO LARGO · USÁ EXPORT',
   linkReady: 'PATCH LISTO · TOCÁ PLAY O UN CONTROL PARA EMPEZAR',
   linkBroken: 'LINK DAÑADO · SE MANTUVO LA SESIÓN',
@@ -225,6 +226,17 @@ export class Patches extends Emitter implements Source<PatchesState> {
     this.apply(parsed);
     this.notify(PATCH_TEXT.linkReady);
     return true;
+  }
+
+  /**
+   * CLEAR: the canvas as just opened (see clearedState). Saved patches are not touched.
+   * The session is written right away, so a reload does not bring the old canvas back.
+   */
+  async clearCanvas(): Promise<void> {
+    this.store.clearCanvas();
+    this.lastSlice = persistentSlice(this.store.getState());
+    this.notify(PATCH_TEXT.cleared);
+    await this.flush();
   }
 
   // Session --------------------------------------------------------------------------------------

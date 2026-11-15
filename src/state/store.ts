@@ -46,7 +46,7 @@ import { BPM_NUDGE, clampBpm } from '../core/transport';
 import { Emitter, type Source } from './emitter';
 import type { Patch } from '../core/patch';
 import { createInitialState } from './initial';
-import { stateFromPatch } from './patch-state';
+import { clearedState, stateFromPatch } from './patch-state';
 import type { AppState, BassVoice, SliceState } from './types';
 
 /** Seeds RNDM tries before settling for one that lights the same steps (practically never). */
@@ -429,6 +429,16 @@ export class Store extends Emitter implements Source<AppState> {
    */
   loadPatch(patch: Patch): void {
     this.update(stateFromPatch(this.state, patch));
+  }
+
+  /**
+   * CLEAR: every node and cable off the canvas, the rest as just opened (see clearedState;
+   * MASTER's settings, the tempo and the metronome stay). One update, like loadPatch: the
+   * transport stops and the nodes leave in the same scene, so the audio releases them the
+   * way it does for any structural change.
+   */
+  clearCanvas(): void {
+    this.update(clearedState(this.state));
   }
 
   private regenerated(seed: number, chaos: number): AppState['drum'] {

@@ -103,6 +103,26 @@ export function stateFromPatch(current: AppState, patch: Patch): AppState {
 }
 
 /**
+ * The canvas as just opened: only MASTER, no cables, every node back to its defaults
+ * (so adding one later starts fresh), stopped, MASTER selected. What belongs to the
+ * listener, not to a patch, stays: MASTER's knobs (levels, space, volume, macro), the
+ * tempo and the metronome. Built as a patch and loaded like one, so the audio sees an
+ * ordinary new scene. The key (tonic and scale) goes back to its default: it is part of
+ * what the nodes play, not a setting of the MASTER.
+ */
+export function clearedState(current: AppState): AppState {
+  const fresh = createInitialState();
+  const kept: AppState = {
+    ...fresh,
+    params: { ...fresh.params, master: current.params.master },
+    transport: { ...fresh.transport, bpm: current.transport.bpm },
+    metronome: current.metronome,
+  };
+  const next = stateFromPatch(current, patchFromState(kept, '', ''));
+  return { ...next, selected: 'master', transport: { ...current.transport, bpm: current.transport.bpm, playing: false, step: -1, sliceBar: 0 } };
+}
+
+/**
  * The parts of the state a patch keeps, as one list: when none of them changed
  * identity, nothing worth saving happened (the playhead moving, a status update).
  */
