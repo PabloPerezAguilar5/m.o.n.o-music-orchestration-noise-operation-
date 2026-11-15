@@ -1,4 +1,11 @@
-import { css } from 'lit';
+import { css, unsafeCSS } from 'lit';
+
+/**
+ * Screens with little height (a phone on its side: 844x390, down to 360 px tall). The
+ * layout changes only under this query: taller screens are untouched. See docs/LAYOUT.md.
+ */
+export const SHORT_SCREEN_QUERY = '(max-height: 600px)';
+export const SHORT = unsafeCSS(SHORT_SCREEN_QUERY);
 
 /** Base rules every component needs, since document styles stop at the shadow boundary. */
 export const reset = css`

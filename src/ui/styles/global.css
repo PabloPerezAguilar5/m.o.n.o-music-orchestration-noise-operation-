@@ -13,6 +13,13 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Short screens (a phone on its side): knobs and keys are 44 px. Same query as SHORT in shared.ts. */
+@media (max-height: 600px) {
+  :root {
+    --ks: 44px;
+  }
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;

@@ -2,7 +2,7 @@ import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { clamp } from '../../core/geometry';
 import { lfoMonitor } from '../../state';
-import { reset } from '../styles/shared';
+import { reset, SHORT } from '../styles/shared';
 
 export type KnobInputEvent = CustomEvent<{ value: number }>;
 
@@ -45,6 +45,13 @@ export class MonoKnob extends LitElement {
       :host([big]) .kn {
         width: clamp(38px, 9vh, 60px);
         height: clamp(38px, 9vh, 60px);
+      }
+      /* Short screens: the big (MACRO) knob is no smaller than a finger. */
+      @media ${SHORT} {
+        :host([big]) .kn {
+          width: 48px;
+          height: 48px;
+        }
       }
       .kn::before {
         content: '';

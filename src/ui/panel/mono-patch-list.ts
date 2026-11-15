@@ -4,7 +4,7 @@ import { classMap } from 'lit/directives/class-map.js';
 import { MAX_PATCH_NAME } from '../../core/patch';
 import type { PatchSummary } from '../../state/patch-storage';
 import { TEXT } from '../labels';
-import { hardwareKey, reset } from '../styles/shared';
+import { hardwareKey, reset, SHORT } from '../styles/shared';
 
 /** What was touched on the list. The panel turns it into Patches calls. */
 export type PatchListAction =
@@ -127,6 +127,24 @@ export class MonoPatchList extends LitElement {
         opacity: 0.6;
         font-size: 10px;
         letter-spacing: 0.12em;
+      }
+      /* Short screens: 44 px keys; each row wraps its keys under the name if it must. */
+      @media ${SHORT} {
+        .pk {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        .list {
+          min-height: 100px;
+        }
+        .row {
+          flex-wrap: wrap;
+          padding: 4px 8px;
+        }
+        .row input {
+          min-height: 44px;
+          font-size: 12px;
+        }
       }
     `,
   ];

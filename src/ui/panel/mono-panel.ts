@@ -85,7 +85,7 @@ import {
   TEXT,
 } from '../labels';
 import { Selector } from '../store-controller';
-import { hardwareKey, reset } from '../styles/shared';
+import { hardwareKey, reset, SHORT } from '../styles/shared';
 import { NODE_COLORS } from '../theme';
 import './mono-keys';
 import type { KeyDownEvent, KeyUpEvent } from './mono-keys';
@@ -464,6 +464,179 @@ export class MonoPanel extends LitElement {
           height: 2px;
         }
       }
+
+      /* Short screens (a phone on its side). The knobs move to a column at the left of
+         the zone; both scroll on their own when they do not fit, and every control is
+         at least 44 px (--ks is 44 px here, see global.css). Taller screens are untouched.
+         Placed last so it wins over the narrow-width rules above. */
+      @media ${SHORT} {
+        :host {
+          filter: drop-shadow(0 0 5px var(--c));
+        }
+        #panel {
+          gap: 4px;
+          padding: 4px 10px 6px;
+        }
+        .hd {
+          gap: 8px;
+          font-size: 11px;
+        }
+        .plq {
+          padding: 2px 6px;
+          font-size: 10px;
+        }
+        .lcd {
+          font-size: 12px;
+          padding: 2px 8px;
+          max-width: none;
+          min-width: 0;
+        }
+        .hz {
+          display: none;
+        }
+        #rm {
+          position: relative;
+          margin-left: auto;
+          flex: none;
+        }
+        /* The key looks the same; its tap area is 44 px. */
+        #rm::after {
+          content: '';
+          position: absolute;
+          inset: -11px -9px;
+        }
+        /* A flat colour, so the scroll cues below blend into it exactly. */
+        .plate {
+          flex-direction: row;
+          gap: 8px;
+          padding: 5px 6px;
+          background: #c8c4b8;
+        }
+        /* Scrolls on its own. Besides the bar, a soft shadow on the edge that has more
+           behind it, since touch screens hide the bar until it is used. */
+        .kr,
+        .zn {
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          scrollbar-width: thin;
+          scrollbar-color: #1b1b22 #0002;
+          background:
+            linear-gradient(#c8c4b8 30%, #c8c4b800) 0 0 / 100% 22px no-repeat local,
+            linear-gradient(#c8c4b800, #c8c4b8 70%) 0 100% / 100% 22px no-repeat local,
+            linear-gradient(#0005, #0000) 0 0 / 100% 9px no-repeat scroll,
+            linear-gradient(#0000, #0005) 0 100% / 100% 9px no-repeat scroll;
+        }
+        .kr::-webkit-scrollbar,
+        .zn::-webkit-scrollbar {
+          width: 8px;
+        }
+        .kr::-webkit-scrollbar-track,
+        .zn::-webkit-scrollbar-track {
+          background: #0002;
+          border-radius: 4px;
+        }
+        .kr::-webkit-scrollbar-thumb,
+        .zn::-webkit-scrollbar-thumb {
+          background: #1b1b22;
+          border-radius: 4px;
+        }
+        .kr {
+          flex: none;
+          width: 222px;
+          min-height: 0;
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-content: flex-start;
+          gap: 6px;
+          padding-right: 4px;
+        }
+        .kr section {
+          flex: 1 1 auto;
+          max-width: 100%;
+          min-width: 0;
+        }
+        .kr section:last-child {
+          margin-left: 0;
+        }
+        .kr h6 {
+          font-size: 10px;
+        }
+        .kk {
+          flex-wrap: wrap;
+          justify-content: flex-start;
+          gap: 6px 8px;
+        }
+        .zn {
+          min-width: 0;
+        }
+        /* Keys that were squeezed into the height of a knob get their own 44 px. */
+        .pk {
+          min-height: 44px;
+          min-width: 44px;
+          font-size: 10px;
+        }
+        .pk.led {
+          padding-top: 8px;
+        }
+        .pk.led::before {
+          top: 5px;
+        }
+        .trio,
+        .quad,
+        .kits,
+        .modes {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(44px, 1fr));
+          grid-auto-rows: 44px;
+          height: auto;
+          min-height: 0;
+          gap: 4px;
+        }
+        .trio {
+          grid-template-columns: repeat(3, minmax(44px, 1fr));
+        }
+        .trio .pk,
+        .quad .pk,
+        .kits .pk,
+        .modes .pk {
+          height: 44px;
+          padding: 8px 4px 0;
+          font-size: 9px;
+        }
+        .trio .pk.led::before,
+        .quad .pk.led::before,
+        .kits .pk.led::before,
+        .modes .pk.led::before {
+          top: 5px;
+          height: 3px;
+        }
+        .stack {
+          height: auto;
+          min-height: 0;
+          gap: 4px;
+        }
+        .stack > * {
+          flex: none;
+          min-height: 44px;
+        }
+        .stack .pk {
+          font-size: 10px;
+        }
+        .pair .pk {
+          min-height: 44px;
+        }
+        .stp .pk {
+          width: 44px;
+          font-size: 14px;
+        }
+        .mini {
+          min-height: 44px;
+          font-size: 11px;
+        }
+        .stp.wide .mini {
+          min-width: 9ch;
+        }
+      }
     `,
   ];
 
@@ -595,6 +768,8 @@ export class MonoPanel extends LitElement {
   private displayText(id: NodeId): string {
     if (this.reading) return this.reading;
     const audio = this.audio.value;
+    const problem = this.audioProblemText(id);
+    if (problem) return problem;
     if (audio.state === 'blocked') return TEXT.audioBlocked;
     if (audio.state === 'unavailable') return TEXT.audioUnavailable;
     const name = NODE_NAMES[id];
@@ -646,6 +821,20 @@ export class MonoPanel extends LitElement {
     const loop = findLoop(audio.loops, slice.loop);
     if (!loop) return `${name} · ${TEXT.missing} ${slice.loop.file}`;
     return `${name} · ${BASS_VOICE_LABELS.slice} · ${SLICE_CATEGORY_LABELS[loop.set]} ${loopLabel(loop)}`;
+  }
+
+  /**
+   * Why there may be no sound, when this browser or page cannot do something audio
+   * needs. MASTER always says it; a node says it only if it needs what is missing (the
+   * AudioWorklet: everything but DRUM, DRONE and BASS in SLICE).
+   */
+  private audioProblemText(id: NodeId): string | null {
+    const { problem } = this.audio.value;
+    if (!problem) return null;
+    if (problem === 'no-web-audio') return TEXT.audioUnavailable;
+    const needsWorklet = id === 'master' || (id !== 'drum' && id !== 'drone' && !(id === 'bass' && this.bass.value.voice === 'slice'));
+    if (!needsWorklet) return null;
+    return problem === 'insecure-context' ? TEXT.audioInsecure : TEXT.audioNoWorklet;
   }
 
   private knobLabel(id: NodeId, param: string): string {

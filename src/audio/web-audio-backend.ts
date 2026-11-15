@@ -37,6 +37,7 @@ import { MasterBus, type MixMeter } from './master';
 import { MetronomeVoice } from './metronome';
 import { MANIFEST_FILE, SampleLibrary } from './sample-library';
 import { Strip } from './strip';
+import { detectAudioProblem } from './support';
 import { synthTrackSpec } from './synth/synth-track';
 import { loadVoiceProcessor } from './voice/voice-module';
 import { VoiceTrack, type Track } from './voice/voice-track';
@@ -173,10 +174,18 @@ export class WebAudioBackend implements AudioBackend {
   private wantPlaying = false;
   private visuals: PendingVisual[] = [];
 
-  private status: AudioStatus = INITIAL_AUDIO_STATUS;
+  private status: AudioStatus = {
+    ...INITIAL_AUDIO_STATUS,
+    problem: detectAudioProblem(),
+  };
   private readonly statusListeners = new Set<StatusListener>();
 
   // AudioBackend ---------------------------------------------------------------------------------
+
+  /** The status as it stands now (it includes what the browser cannot do, known before any touch). */
+  getStatus(): AudioStatus {
+    return this.status;
+  }
 
   unlock(): void {
     if (this.status.state === 'unavailable') return;

@@ -10,7 +10,7 @@ import { activity, cues, lfoMonitor, pulse, store } from '../../state';
 import { KNOB_LABELS, NODE_NAMES, TEXT } from '../labels';
 import { NODE_COLORS } from '../theme';
 import { Selector } from '../store-controller';
-import { reset } from '../styles/shared';
+import { reset, SHORT } from '../styles/shared';
 import './mono-add-menu';
 import type { NodeAddEvent } from './mono-add-menu';
 import { cableView, nodeView, OUTPUT_PORT, wireView } from './node-view';
@@ -119,6 +119,18 @@ export class MonoStage extends LitElement {
         border-color: var(--ink);
         box-shadow: 0 0 12px rgba(237, 237, 247, 0.35);
       }
+      /* Short screens: a 44 px play key; the canvas is small, so the logo sits tighter. */
+      @media ${SHORT} {
+        .logo {
+          top: 6px;
+          font-size: 13px;
+        }
+        #play {
+          top: 30px;
+          width: 44px;
+          height: 44px;
+        }
+      }
 
       /* Nodes are grey until they sound; then they take their own colour. */
       .nd {
@@ -159,6 +171,9 @@ export class MonoStage extends LitElement {
       .nd.on path {
         stroke: var(--c);
         filter: drop-shadow(0 0 9px var(--c));
+        /* Where color-mix is missing (Safari before 16.2, Firefox before 113) the lit node
+           keeps a lighter grey fill; its stroke and glow still take the node colour. */
+        fill: #2b2b46;
         fill: color-mix(in srgb, var(--c) 18%, #202034);
       }
       .nd.lfo.on path {

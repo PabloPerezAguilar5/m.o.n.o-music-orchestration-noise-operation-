@@ -2,7 +2,7 @@ import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { STEPS, type Pattern } from '../../core/patterns';
-import { reset } from '../styles/shared';
+import { reset, SHORT } from '../styles/shared';
 
 export type StepToggleEvent = CustomEvent<{ row: number; col: number }>;
 
@@ -101,6 +101,39 @@ export class MonoStepGrid extends LitElement {
         line-height: 1;
         color: #1b1b22;
         pointer-events: none;
+      }
+      /* Short screens: every key keeps a finger-sized height (sixteen columns leave less
+         width, see docs/LAYOUT.md); the zone around the grid scrolls when the rows do not fit. */
+      @media ${SHORT} {
+        :host {
+          flex: none;
+          width: 100%;
+          min-height: min-content;
+        }
+        .sq,
+        .sq.dense {
+          gap: 4px;
+        }
+        .st {
+          min-height: 34px;
+        }
+        .dense .st {
+          min-height: 28px;
+        }
+        .st::before,
+        .dense .st::before {
+          top: 3px;
+          height: 3px;
+        }
+        .st b {
+          font-size: 9px;
+        }
+        .sq span {
+          font-size: 9px;
+        }
+        .sq > span:not(.nm) {
+          min-width: 36px;
+        }
       }
     `,
   ];

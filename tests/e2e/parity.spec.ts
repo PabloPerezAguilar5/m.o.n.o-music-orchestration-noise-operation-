@@ -230,10 +230,21 @@ const EXCLUDED_STATES: Readonly<Record<string, string>> = {
   'panel-lead': 'LEAD panel redesigned in stage 5',
 };
 
+/*
+ * 17. Short screens (stage 9). Below 600 px of height the layout changes on purpose, so
+ *     the pixel comparison no longer applies at 844x390: the knobs go to a column at the
+ *     left of the zone (the prototype keeps them in a row above it), the canvas is
+ *     smaller with a draggable divider under it, controls are 44 px, and the panels
+ *     scroll inside themselves. Affects every state at that size. The prototype stays
+ *     the reference at 1280x720, where nothing changed. The phone is still walked
+ *     through every state (so the same states are reached without errors) and
+ *     tests/e2e/short-screen.spec.ts checks its layout: every row visible or scrollable,
+ *     44 px controls, the divider.
+ */
 const NODE_ORDER = ['synth', 'drum', 'bass', 'drone', 'dist', 'lfo', 'lead'] as const;
 const VIEWPORTS = [
-  { name: 'desktop', width: 1280, height: 720 },
-  { name: 'phone-landscape', width: 844, height: 390 },
+  { name: 'desktop', width: 1280, height: 720, compare: true },
+  { name: 'phone-landscape', width: 844, height: 390, compare: false },
 ] as const;
 
 /**
@@ -295,7 +306,7 @@ for (const viewport of VIEWPORTS) {
 
     expect([...app.keys()]).toEqual([...prototype.keys()]);
     for (const [name, expectedShot] of prototype) {
-      if (name in EXCLUDED_STATES) continue;
+      if (!viewport.compare || name in EXCLUDED_STATES) continue;
       const expected = PNG.sync.read(expectedShot);
       const actual = PNG.sync.read(app.get(name)!);
       const diff = new PNG({ width: expected.width, height: expected.height });

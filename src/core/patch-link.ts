@@ -24,9 +24,25 @@ export interface PatchLink {
   readonly length: number;
 }
 
-/** Whether this runtime can deflate and inflate. */
-export const canCompress = (): boolean =>
-  typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+/** Detail of the PatchError for a compressed link this browser cannot inflate. */
+export const NO_INFLATE = 'no DecompressionStream';
+
+let compressible: boolean | undefined;
+/**
+ * Whether this runtime can deflate and inflate. The constructors existing is not enough:
+ * older Safari and Firefox have them without the 'deflate-raw' format, and throw on use.
+ */
+export function canCompress(): boolean {
+  if (compressible !== undefined) return compressible;
+  try {
+    new CompressionStream('deflate-raw');
+    new DecompressionStream('deflate-raw');
+    compressible = typeof Blob === 'function' && typeof Blob.prototype.stream === 'function';
+  } catch {
+    compressible = false;
+  }
+  return compressible;
+}
 
 async function pipe(bytes: Uint8Array, stream: ReadableWritablePair<Uint8Array, BufferSource>): Promise<Uint8Array> {
   const source = new Blob([bytes as BlobPart]).stream().pipeThrough(stream);
@@ -123,7 +139,7 @@ export async function decodePatchLink(hashOrUrl: string): Promise<unknown> {
   if (data.length > MAX_LINK_INPUT) throw new PatchError('too-big');
   let bytes = fromBase64Url(data);
   if (match[2] !== 'r') {
-    if (!canCompress()) throw new PatchError('json', 'no DecompressionStream');
+    if (!canCompress()) throw new PatchError('json', NO_INFLATE);
     try {
       bytes = await inflate(bytes, MAX_PATCH_BYTES);
     } catch (error) {

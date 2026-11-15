@@ -3,7 +3,7 @@ import { customElement, property, query, state } from 'lit/decorators.js';
 import { parseBpm } from '../../core/transport';
 import { holdRepeat } from '../hold-repeat';
 import { TEXT } from '../labels';
-import { hardwareKey, reset } from '../styles/shared';
+import { hardwareKey, reset, SHORT } from '../styles/shared';
 
 export type TempoNudgeEvent = CustomEvent<{ direction: 1 | -1 }>;
 export type TempoSetEvent = CustomEvent<{ bpm: number }>;
@@ -69,6 +69,17 @@ export class MonoTempo extends LitElement {
         padding: 0 14px;
         touch-action: none;
         ${hardwareKey}
+      }
+      @media ${SHORT} {
+        :host {
+          flex-wrap: wrap;
+          align-content: center;
+          gap: 10px;
+        }
+        button {
+          min-height: 44px;
+          min-width: 44px;
+        }
       }
     `,
   ];

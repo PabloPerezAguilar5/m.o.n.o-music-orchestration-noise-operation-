@@ -11,7 +11,7 @@ import {
   type Patch,
   type PatchWarning,
 } from '../core/patch';
-import { decodePatchLink, encodePatchLink, MAX_LINK_LENGTH, type PatchLink } from '../core/patch-link';
+import { decodePatchLink, encodePatchLink, MAX_LINK_LENGTH, NO_INFLATE, type PatchLink } from '../core/patch-link';
 import { DEFAULT_LOOP, findLoop } from '../core/slice';
 import { Emitter, type Source } from './emitter';
 import { createInitialState } from './initial';
@@ -56,6 +56,7 @@ export const PATCH_TEXT = {
   linkTooLong: 'LINK DEMASIADO LARGO · USÁ EXPORT',
   linkReady: 'PATCH LISTO · TOCÁ PLAY O UN CONTROL PARA EMPEZAR',
   linkBroken: 'LINK DAÑADO · SE MANTUVO LA SESIÓN',
+  linkNoInflate: 'ESTE NAVEGADOR NO ABRE LINKS COMPRIMIDOS · PEDÍ EL ARCHIVO Y USÁ IMPORT',
   notPersistent: 'SIN ALMACENAMIENTO · NO SE VA A CONSERVAR',
   kitMissing: (wanted: string) => `KIT ${kitLabel(wanted)} NO EXISTE · SE USA ${kitLabel(DEFAULT_KIT)}`,
   loopMissing: (wanted: string) => `LOOP ${wanted} NO EXISTE · SE USA ${DEFAULT_LOOP.set} ${DEFAULT_LOOP.file}`,
@@ -214,7 +215,7 @@ export class Patches extends Emitter implements Source<PatchesState> {
       parsed = parsePatch(migratePatch(await decodePatchLink(hashOrUrl)), this.known());
     } catch (error) {
       console.warn('M.O.N.O.: el link no trae un patch válido.', error);
-      this.notify(PATCH_TEXT.linkBroken);
+      this.notify(error instanceof PatchError && error.detail === NO_INFLATE ? PATCH_TEXT.linkNoInflate : PATCH_TEXT.linkBroken);
       return false;
     }
     if (!this.isEmptySession()) {

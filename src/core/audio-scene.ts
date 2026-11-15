@@ -1,3 +1,4 @@
+import type { AudioProblem } from './audio-support';
 import type { BassMode, BassPattern } from './bass-patterns';
 import type { DronePreset } from './drone';
 import type { DroneKnobs } from './drone-sound';
@@ -169,6 +170,8 @@ export interface AudioStatus {
   readonly loops: readonly BassLoop[] | null;
   /** Loops asked for so far, by id ("set/file"). */
   readonly loopStates: Readonly<Record<string, LoopLoadState>>;
+  /** Something this browser or page cannot do that costs sound, known from the start; absent when nothing. */
+  readonly problem?: AudioProblem | null;
 }
 
 export const INITIAL_AUDIO_STATUS: AudioStatus = { state: 'idle', kits: [], missing: {}, loops: null, loopStates: {} };

@@ -306,5 +306,7 @@ export const TEXT = {
   loadError: 'ERROR',
   noLoops: 'SIN LOOPS',
   audioBlocked: 'AUDIO BLOQUEADO · TOCÁ ▶',
-  audioUnavailable: 'SIN AUDIO EN ESTE NAVEGADOR',
+  audioUnavailable: 'AUDIO NO DISPONIBLE: ESTE NAVEGADOR NO TIENE WEB AUDIO',
+  audioInsecure: 'AUDIO NO DISPONIBLE: ABRÍ LA APP DESDE HTTPS O LOCALHOST',
+  audioNoWorklet: 'AUDIO LIMITADO: ESTE NAVEGADOR NO TIENE AUDIOWORKLET',
 } as const;

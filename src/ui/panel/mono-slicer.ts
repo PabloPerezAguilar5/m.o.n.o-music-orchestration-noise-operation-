@@ -16,7 +16,7 @@ import {
   type SlicePattern,
 } from '../../core/slice';
 import { loopLabel, SLICE_CATEGORY_LABELS, TEXT } from '../labels';
-import { hardwareKey, reset } from '../styles/shared';
+import { hardwareKey, reset, SHORT } from '../styles/shared';
 
 /** What was touched on the SLICE zone. The panel turns it into store actions and cues. */
 export type SliceAction =
@@ -281,6 +281,54 @@ export class MonoSlicer extends LitElement {
       /* The step playing the piece picked on the wave. */
       .st.sel b {
         text-decoration: underline;
+      }
+
+      /* Short screens: 44 px keys and list rows; the zone scrolls when it does not fit. */
+      @media ${SHORT} {
+        :host {
+          overscroll-behavior: contain;
+        }
+        .pk {
+          min-height: 44px;
+          min-width: 44px;
+          font-size: 9px;
+        }
+        .pk.led {
+          padding-top: 8px;
+        }
+        .pk.led::before {
+          top: 5px;
+          height: 3px;
+        }
+        .lp {
+          width: 150px;
+          min-height: 0;
+        }
+        .list {
+          min-height: 132px;
+        }
+        .it {
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+        }
+        .mn {
+          min-height: 176px;
+        }
+        .tb {
+          flex-wrap: wrap;
+        }
+        .tb .pk {
+          min-width: 44px;
+        }
+        .st {
+          min-height: 34px;
+        }
+        /* Columns may shrink below their content, so sixteen steps fit at any width. */
+        .sq {
+          gap: 2px;
+          grid-template-columns: minmax(32px, max-content) repeat(16, minmax(0, 1fr));
+        }
       }
     `,
   ];
