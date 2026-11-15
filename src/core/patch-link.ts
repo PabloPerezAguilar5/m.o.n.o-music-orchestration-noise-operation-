@@ -12,6 +12,9 @@ export const LINK_PREFIX = '#p=';
 /** A link longer than this is refused: too long for most chats; EXPORT is the way then. */
 export const MAX_LINK_LENGTH = 6000;
 
+/** Most characters of link data decoding will look at (64 KB). */
+export const MAX_LINK_INPUT = 64 * 1024;
+
 export type LinkFormat = 'deflate' | 'raw';
 
 export interface PatchLink {
@@ -31,7 +34,39 @@ async function pipe(bytes: Uint8Array, stream: ReadableWritablePair<Uint8Array, 
 }
 
 export const deflate = (bytes: Uint8Array): Promise<Uint8Array> => pipe(bytes, new CompressionStream('deflate-raw'));
-export const inflate = (bytes: Uint8Array): Promise<Uint8Array> => pipe(bytes, new DecompressionStream('deflate-raw'));
+
+/**
+ * Inflates reading the stream in chunks. As soon as the output passes `maxBytes` it
+ * cancels the stream and throws PatchError('too-big'): a compression bomb never
+ * gets to sit whole in memory.
+ */
+export async function inflate(bytes: Uint8Array, maxBytes: number = MAX_PATCH_BYTES): Promise<Uint8Array> {
+  const source = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  const reader = source.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new PatchError('too-big');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
 
 export function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
@@ -83,14 +118,16 @@ export async function decodePatchLink(hashOrUrl: string): Promise<unknown> {
   if (!match) throw new PatchError('json', 'link format');
   const version = Number(match[1]);
   if (version < 1 || version > PATCH_VERSION) throw new PatchError('version', String(version));
-  // Compressed data cannot be bigger than the patch it carries, so the limit holds before inflating.
-  if (data.length > MAX_PATCH_BYTES * 2) throw new PatchError('too-big');
+  // Input cap, in characters. Real links are under MAX_LINK_LENGTH; this is only a
+  // generous bound. It does NOT bound the inflated size: inflate() does that itself.
+  if (data.length > MAX_LINK_INPUT) throw new PatchError('too-big');
   let bytes = fromBase64Url(data);
   if (match[2] !== 'r') {
     if (!canCompress()) throw new PatchError('json', 'no DecompressionStream');
     try {
-      bytes = await inflate(bytes);
-    } catch {
+      bytes = await inflate(bytes, MAX_PATCH_BYTES);
+    } catch (error) {
+      if (error instanceof PatchError) throw error;
       throw new PatchError('json', 'inflate');
     }
   }

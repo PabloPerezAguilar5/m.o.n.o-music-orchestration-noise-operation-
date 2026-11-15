@@ -3,6 +3,9 @@ import { parsePatch, PatchError, patchJson } from '../../src/core/patch';
 import {
   canCompress,
   decodePatchLink,
+  deflate,
+  inflate,
+  MAX_LINK_INPUT,
   encodePatchLink,
   fromBase64Url,
   hasPatchLink,
@@ -89,5 +92,20 @@ describe('patch links', () => {
     expect(await codes('#p=1.AAAAAAAAAAAA')).toBe('json'); // not deflate
     expect(await codes(`#p=1r.${toBase64Url(new TextEncoder().encode('{"v":1,'))}`)).toBe('json');
     expect(await codes(`#p=1.${'A'.repeat(500_000)}`)).toBe('too-big');
+  });
+
+  it('rejects a compression bomb fast, without inflating it whole', async () => {
+    // 12 MB of zeros deflate to ~12 KB, which fits the input cap.
+    const bomb = await deflate(new Uint8Array(12 * 1024 * 1024));
+    expect(bomb.length).toBeLessThan(MAX_LINK_INPUT * 0.7);
+    const hash = `${LINK_PREFIX}1.${toBase64Url(bomb)}`;
+    const before = process.memoryUsage().arrayBuffers;
+    const started = performance.now();
+    await expect(decodePatchLink(hash)).rejects.toMatchObject({ name: 'PatchError', code: 'too-big' });
+    expect(performance.now() - started).toBeLessThan(1000);
+    // Far less than the 12 MB it would have taken.
+    expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(6 * 1024 * 1024);
+    // inflate itself enforces the cap too.
+    await expect(inflate(bomb, 1024)).rejects.toMatchObject({ code: 'too-big' });
   });
 });
