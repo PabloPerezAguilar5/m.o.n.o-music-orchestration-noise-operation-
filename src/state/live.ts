@@ -3,7 +3,7 @@ import { DRONE_CHARACTERS, droneReleaseTime } from '../core/drone-sound';
 import type { Point } from '../core/geometry';
 import { LeadNotes, leadMidi, leadReleaseTime, leadVariation, type LeadNoteEvent } from '../core/lead';
 import type { LiveEvent } from '../core/live-events';
-import { MACRO_PARAM, type NodeId } from '../core/nodes';
+import { isMutable, MACRO_PARAM, type NodeId } from '../core/nodes';
 import { reachesMaster } from '../core/routing';
 import { createRng, randomSeed, type RandomSource } from '../core/random';
 import { Emitter, type Source } from './emitter';
@@ -36,6 +36,9 @@ const tailMs = (seconds: number): number => Math.min(MAX_TAIL_MS, Math.max(MIN_T
 
 /** On the canvas, its sound reaching MASTER through plugged-in cables (maybe through an effect). */
 const plays = (state: AppState, id: NodeId): boolean => reachesMaster(state.cables, state.added, id);
+
+/** Sounding, for the lights: it reaches MASTER and is not OFF (an OFF node makes no light). */
+const heard = (state: AppState, id: NodeId): boolean => plays(state, id) && (!isMutable(id) || state.on[id]);
 
 /**
  * The live instruments, LEAD and DRONE: touches in, live events out. The panel reports
@@ -208,10 +211,10 @@ export class Live extends Emitter implements Source<LiveState> {
       this.emit();
     }
     const state = this.store.getState();
-    this.light('lead', this.notes.playing && plays(state, 'lead'), () =>
+    this.light('lead', this.notes.playing && heard(state, 'lead'), () =>
       tailMs(leadReleaseTime(state.params.lead.release ?? 0) * TAIL_SPANS),
     );
-    this.light('drone', layers.length > 0 && plays(state, 'drone'), () =>
+    this.light('drone', layers.length > 0 && heard(state, 'drone'), () =>
       tailMs(droneReleaseTime(state.params.drone.release ?? 0) * DRONE_CHARACTERS[state.drone.preset].releaseScale),
     );
   }
@@ -221,6 +224,6 @@ export class Live extends Emitter implements Source<LiveState> {
     if (this.lit[id] === sounding) return;
     this.lit[id] = sounding;
     this.lights.hold(id, sounding);
-    if (!sounding && plays(this.store.getState(), id)) this.lights.pulse(id, tail());
+    if (!sounding && heard(this.store.getState(), id)) this.lights.pulse(id, tail());
   }
 }

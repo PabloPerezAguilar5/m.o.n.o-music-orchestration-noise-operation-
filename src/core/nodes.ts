@@ -7,6 +7,24 @@ export const INSTRUMENT_IDS: readonly InstrumentId[] = NODE_IDS.filter(
   (id): id is InstrumentId => id !== 'master',
 );
 
+/**
+ * Nodes with a level knob on MASTER: each also has an ON/OFF key there, a mute at the
+ * node's output. DISTORSION and LFO have no level knob, so no key.
+ */
+export const MUTE_IDS = ['synth', 'drum', 'bass', 'drone', 'lead'] as const;
+export type MuteId = (typeof MUTE_IDS)[number];
+export const isMutable = (id: NodeId): id is MuteId => (MUTE_IDS as readonly NodeId[]).includes(id);
+/** The MASTER knob that sets each node's level; the ON/OFF key sits under it. */
+export const LEVEL_PARAM: Readonly<Record<MuteId, string>> = {
+  synth: 'synthLevel',
+  drum: 'drumLevel',
+  bass: 'bassLevel',
+  drone: 'droneLevel',
+  lead: 'leadLevel',
+};
+/** Every mutable node ON, as a new canvas starts. */
+export const allOn = (): Record<MuteId, boolean> => ({ synth: true, drum: true, bass: true, drone: true, lead: true });
+
 /** Nodes driven by a 16-step pattern. */
 export const SEQUENCED_IDS = ['synth', 'drum', 'bass'] as const;
 export type SequencedId = (typeof SEQUENCED_IDS)[number];

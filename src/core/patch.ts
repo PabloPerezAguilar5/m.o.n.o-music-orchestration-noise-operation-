@@ -6,7 +6,7 @@ import { MAX_HITS_PER_STEP, MAX_OFFSET, type Hit } from './generators';
 import { clamp, clamp01, clampNodePosition, type Point } from './geometry';
 import { clampLeadOctave } from './lead';
 import { LFO_SHAPES, type LfoShape } from './lfo';
-import { DIST_TYPES, DRUM_ROWS, MACRO_PARAM, NODE_IDS, NODE_SPECS, type DistType, type NodeId } from './nodes';
+import { DIST_TYPES, DRUM_ROWS, MACRO_PARAM, MUTE_IDS, NODE_IDS, NODE_SPECS, type DistType, type MuteId, type NodeId } from './nodes';
 import { STEPS } from './patterns';
 import { cableKind, createsLoop, sameCable, type Cable } from './routing';
 import { DEGREES, ROOTS, SCALE_IDS, SYNTH_STEPS, type ScaleId } from './scales';
@@ -90,6 +90,11 @@ export interface Patch {
   readonly key: { readonly root: number; readonly scale: ScaleId };
   /** Nodes on the canvas, MASTER first. */
   readonly nodes: readonly NodeId[];
+  /**
+   * ON/OFF of each node with a level knob on MASTER. Optional in a file (`on` and any id in
+   * it): what is missing is ON, so older patches load as they sounded. Not a new version.
+   */
+  readonly on: Readonly<Record<MuteId, boolean>>;
   readonly positions: Readonly<Partial<Record<NodeId, Point>>>;
   /** Knob values 0..1 by node and param; a missing knob keeps its default. */
   readonly params: Readonly<Partial<Record<NodeId, Readonly<Record<string, number>>>>>;
@@ -387,6 +392,9 @@ export function parsePatch(input: unknown, known: KnownAssets = UNKNOWN_ASSETS):
     params[id] = clean;
   }
 
+  const rawOn = optionalRecord(raw, 'on', 'on');
+  const on = Object.fromEntries(MUTE_IDS.map((id) => [id, boolean(field(rawOn, id), `on.${id}`, true)])) as Record<MuteId, boolean>;
+
   const rawKey = optionalRecord(raw, 'key', 'key');
   const rawDrum = optionalRecord(raw, 'drum', 'drum');
   const rawBass = optionalRecord(raw, 'bass', 'bass');
@@ -417,6 +425,7 @@ export function parsePatch(input: unknown, known: KnownAssets = UNKNOWN_ASSETS):
       scale: oneOf(field(rawKey, 'scale'), SCALE_IDS, 'key.scale', 'pentaMinor'),
     },
     nodes,
+    on,
     positions,
     params,
     cables: parseCables(field(raw, 'cables'), nodes),

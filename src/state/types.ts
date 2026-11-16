@@ -5,7 +5,7 @@ import type { DroneMode, DronePreset } from '../core/drone';
 import type { Point } from '../core/geometry';
 import type { LfoShape } from '../core/lfo';
 import type { Cable } from '../core/routing';
-import type { DistType, NodeId } from '../core/nodes';
+import type { DistType, MuteId, NodeId } from '../core/nodes';
 import type { ScaleId } from '../core/scales';
 import type { SliceBar, SliceCategory, SliceDiceMode, SliceLoopRef, SlicePattern } from '../core/slice';
 import type { SynthMode, SynthPattern } from '../core/synth-patterns';
@@ -134,6 +134,8 @@ export interface AppState {
   /** Nodes on the canvas in the order they were added; 'master' is always first. */
   readonly added: readonly NodeId[];
   readonly selected: NodeId;
+  /** ON/OFF of each node with a level knob (OFF = muted at its output). A new node starts ON. */
+  readonly on: Readonly<Record<MuteId, boolean>>;
   /** Kept for every type, so a removed node comes back where it was. */
   readonly positions: Readonly<Record<NodeId, Point>>;
   readonly params: Readonly<Record<NodeId, ParamValues>>;

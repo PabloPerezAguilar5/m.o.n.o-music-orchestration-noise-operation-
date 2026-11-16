@@ -33,7 +33,7 @@ import {
 } from '../core/slice';
 import { EMPTY_DRUM_PATTERN, generateDrumPattern, sameGrid, toggleDrumStep } from '../core/drum-patterns';
 import { clamp, clampNodePosition, type Point } from '../core/geometry';
-import { MACRO_PARAM, type DistType, type NodeId } from '../core/nodes';
+import { isMutable, MACRO_PARAM, type DistType, type NodeId } from '../core/nodes';
 import {
   EMPTY_SYNTH_PATTERN,
   generateSynthPattern,
@@ -88,6 +88,8 @@ export class Store extends Emitter implements Source<AppState> {
     const { added, transport, cables } = this.state;
     this.update({
       added: [...added, id],
+      // A node added now starts ON, whatever it was when it left.
+      on: isMutable(id) ? { ...this.state.on, [id]: true } : this.state.on,
       selected: id,
       cables: [...cables, ...defaultCables(id)],
       transport: transport.playing ? transport : { ...transport, playing: true },
@@ -118,6 +120,16 @@ export class Store extends Emitter implements Source<AppState> {
     const result = connect(this.state.cables, from, to);
     if (result.ok && result.changed) this.update({ cables: result.cables });
     return result;
+  }
+
+  /** ON/OFF of a node on MASTER: OFF mutes it at its output, at once. Nodes without a key ignore it. */
+  setNodeOn(id: NodeId, on: boolean): void {
+    if (!isMutable(id) || this.state.on[id] === on) return;
+    this.update({ on: { ...this.state.on, [id]: on } });
+  }
+
+  toggleNodeOn(id: NodeId): void {
+    if (isMutable(id)) this.setNodeOn(id, !this.state.on[id]);
   }
 
   /** Cuts a cable, or plugs a cut one back in. */

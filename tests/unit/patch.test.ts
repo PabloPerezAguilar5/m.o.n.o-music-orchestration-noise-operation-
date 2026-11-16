@@ -41,6 +41,7 @@ function busyStore(): Store {
   store.connect('bass', 'dist');
   store.connect('lfo', 'bass');
   store.toggleCable('drum', 'master');
+  store.setNodeOn('lead', false);
   store.moveNode('synth', { x: 200, y: 100 });
   store.setBpm(133);
   store.nudgeRoot(1);

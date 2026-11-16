@@ -15,6 +15,8 @@ export const INPUT_PORT: Point = { x: -44, y: 0 };
 export interface NodeLook {
   readonly selected: boolean;
   readonly lit: boolean;
+  /** Switched OFF on MASTER (muted): grey, with a small mute bar. */
+  readonly muted: boolean;
   /** A cable is being dragged and it can land here: the input port lights up. */
   readonly target: boolean;
   /** Colour of the cable being dragged (the source's). */
@@ -28,7 +30,7 @@ export interface NodeLook {
  */
 export const nodeView = (id: NodeId, position: Point, look: NodeLook): SVGTemplateResult => svg`
   <g
-    class=${classMap({ nd: true, [id]: true, sel: look.selected, on: look.lit, tg: look.target })}
+    class=${classMap({ nd: true, [id]: true, sel: look.selected, on: look.lit, mute: look.muted, tg: look.target })}
     id="nd-${id}"
     data-id=${id}
     transform="translate(${position.x} ${position.y})"
@@ -38,6 +40,7 @@ export const nodeView = (id: NodeId, position: Point, look: NodeLook): SVGTempla
     <circle r="46" class="ring" />
     <path d=${SHAPES[id]} />
     <text y="60" text-anchor="middle">${NODE_NAMES[id]}</text>
+    ${look.muted ? svg`<path class="mutebar" d="M -9 72 H 9" />` : nothing}
     ${look.target ? svg`<circle class="pin" cx=${INPUT_PORT.x} cy=${INPUT_PORT.y} r="6" />` : nothing}
     ${hasOutput(id)
       ? svg`<g

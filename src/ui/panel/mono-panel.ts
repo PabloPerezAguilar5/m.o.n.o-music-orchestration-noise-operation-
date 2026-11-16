@@ -30,7 +30,7 @@ import {
 import { gridFromPattern, type DrumPattern } from '../../core/drum-patterns';
 import { LFO_SHAPES, lfoRate, lfoRateLabel, MOD_TARGETS, type LfoShape } from '../../core/lfo';
 import { clickAt } from '../../core/metronome';
-import { isSequenced, MACRO_PARAM, NODE_SPECS, type NodeId, type ParamSection } from '../../core/nodes';
+import { isSequenced, LEVEL_PARAM, MACRO_PARAM, MUTE_IDS, NODE_SPECS, type MuteId, type NodeId, type ParamSection } from '../../core/nodes';
 import { MAX_PATCH_BYTES, MAX_PATCH_NAME } from '../../core/patch';
 import type { Pattern } from '../../core/patterns';
 import { randomSeed } from '../../core/random';
@@ -274,6 +274,30 @@ export class MonoPanel extends LitElement {
         flex: 1;
         min-height: 0;
         display: flex;
+      }
+      /* A node's level knob with its ON/OFF key underneath (MASTER). */
+      .lv {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+      }
+      .pk.onoff {
+        height: auto;
+        min-height: 26px;
+        min-width: calc(var(--ks) + 4px);
+        padding: 8px 6px 0;
+        font-size: 10px;
+        letter-spacing: 0.1em;
+      }
+      /* OFF: no colour, no glow, a plain pressed-in grey key. */
+      .pk.onoff:not(.on) {
+        color: #5c5a52;
+        background: linear-gradient(#9c9a90, #8a887e);
+        box-shadow: inset 0 2px 3px #0005;
+      }
+      .pk.onoff.on {
+        box-shadow: inset 0 -3px 0 var(--c);
       }
       /* Hardware keys of the PATRÓN section (DRUM), as tall as a knob. */
       .pk {
@@ -599,6 +623,10 @@ export class MonoPanel extends LitElement {
         .pk.led::before {
           top: 5px;
         }
+        .pk.onoff {
+          min-height: 44px;
+          min-width: 44px;
+        }
         .trio,
         .quad,
         .kits,
@@ -662,6 +690,7 @@ export class MonoPanel extends LitElement {
   private readonly params = new Selector(this, store, (s) => s.params);
   private readonly key = new Selector(this, store, (s) => s.key);
   private readonly synth = new Selector(this, store, (s) => s.synth);
+  private readonly nodeOn = new Selector(this, store, (s) => s.on);
   private readonly lead = new Selector(this, store, (s) => s.lead);
   private readonly drone = new Selector(this, store, (s) => s.drone);
   /** What is being played by hand: LEAD keys down, DRONE layers. */
@@ -758,9 +787,12 @@ export class MonoPanel extends LitElement {
             (section) => html`<section data-section=${section.id}>
               <h6>${SECTION_LABELS[section.id] ?? NODE_NAMES[id]}</h6>
               <div class="kk">
-                ${section.params.map((param) =>
-                  this.knob(param, this.knobLabel(id, param), values[param] ?? 0, false, this.modDepth(id, param)),
-                )}
+                ${section.params.map((param) => {
+                  const knob = this.knob(param, this.knobLabel(id, param), values[param] ?? 0, false, this.modDepth(id, param));
+                  const owner = id === 'master' ? MUTE_IDS.find((node) => LEVEL_PARAM[node] === param) : undefined;
+                  // A node's level knob has its ON/OFF key right under it.
+                  return owner ? html`<div class="lv">${knob}${this.onOffKey(owner)}</div>` : knob;
+                })}
               </div>
             </section>`,
           )}
@@ -921,6 +953,28 @@ export class MonoPanel extends LitElement {
         ${this.clearKey()}
       </div>
     </section>`;
+  }
+
+  /** ON/OFF of a node, under its level knob on MASTER: ON has the node's LED lit, OFF is plain grey. */
+  private onOffKey(node: MuteId): TemplateResult {
+    const on = this.nodeOn.value[node];
+    return html`<button
+      class=${classMap({ pk: true, led: true, onoff: true, on })}
+      id="on-${node}"
+      data-node=${node}
+      data-on=${on}
+      style="--c:${NODE_COLORS[node]}"
+      aria-label="${TEXT.nodeOnHint}: ${NODE_NAMES[node]}"
+      aria-pressed=${on}
+      @click=${() => this.onNodeOnOff(node)}
+    >
+      ${on ? TEXT.nodeOn : TEXT.nodeOff}
+    </button>`;
+  }
+
+  private onNodeOnOff(node: MuteId): void {
+    store.toggleNodeOn(node);
+    this.reading = `${NODE_NAMES[node]} ${store.getState().on[node] ? TEXT.nodeOn : TEXT.nodeOff}`;
   }
 
   /** BORRAR: every step of the selected node's pattern goes blank. */

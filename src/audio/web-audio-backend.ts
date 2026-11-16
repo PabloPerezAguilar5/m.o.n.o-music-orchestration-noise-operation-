@@ -10,7 +10,7 @@ import type { DrumPattern } from '../core/drum-patterns';
 import { lfoRate } from '../core/lfo';
 import type { LiveEvent } from '../core/live-events';
 import { clickAt } from '../core/metronome';
-import { DRUM_ROWS, type NodeId } from '../core/nodes';
+import { DRUM_ROWS, isMutable, MUTE_IDS, type MuteId, type NodeId } from '../core/nodes';
 import type { Link } from '../core/routing';
 import { LookaheadScheduler, type ScheduledStep } from '../core/scheduler';
 import { synthMidi } from '../core/scales';
@@ -152,8 +152,10 @@ export class WebAudioBackend implements AudioBackend {
   private drone: DroneModule | null = null;
   private dist: DistModule | null = null;
   private lfo: LfoModule | null = null;
-  /** Each instrument's level, at its output. */
+  /** Each instrument's level and ON/OFF, at its output. */
   private readonly strips = new Map<NodeId, Strip>();
+  /** ON/OFF as the scene last said (nodes without a key are always on). */
+  private on: Readonly<Record<MuteId, boolean>> = { synth: true, drum: true, bass: true, drone: true, lead: true };
   /** Instruments whose sound reaches MASTER in the graph as it is now. */
   private heard = new Set<NodeId>();
   private voiceLoad: WorkletLoad = 'loading';
@@ -242,8 +244,12 @@ export class WebAudioBackend implements AudioBackend {
     const context = this.context;
     if (!this.initialized || !context) return;
     const now = context.currentTime;
-    if (event.node === 'lead') this.lead.play(event, now);
-    else this.drone?.play(event, now);
+    // OFF: the keyboard and the pad make no sound (their off, stop and clear still go through).
+    if (event.node === 'lead') {
+      if (!(event.type === 'on' && !this.on.lead)) this.lead.play(event, now);
+    } else if (!(event.type === 'start' && !this.on.drone)) {
+      this.drone?.play(event, now);
+    }
   }
 
   audition(kit: string): void {
@@ -412,7 +418,11 @@ export class WebAudioBackend implements AudioBackend {
     // Continuous: from now.
     this.scheduler.setBpm(scene.bpm);
     this.master!.setVolume(masterGain(scene.master.volume), now);
-    for (const [id, strip] of this.strips) strip.setLevel(this.levelOf(scene, id), now);
+    for (const [id, strip] of this.strips) {
+      strip.setLevel(this.levelOf(scene, id), now);
+      strip.setMuted(!this.isOn(scene, id), now);
+    }
+    this.applyOnOff(scene, now);
     this.metronome!.setVolume(scene.metronome.volume, now);
     for (const row of DRUM_ROWS) this.drum?.setRow(row, scene.drum.rows[row], now);
     for (const track of this.tracks) track.update(scene, now);
@@ -451,6 +461,29 @@ export class WebAudioBackend implements AudioBackend {
     return [DRUM, ...this.tracks.map((track) => track.id), DIST, LFO];
   }
 
+  private isOn(scene: AudioScene, id: NodeId): boolean {
+    return !isMutable(id) || scene.on[id];
+  }
+
+  /**
+   * A node that has just gone OFF lets go of what it was playing, so nothing hangs and no
+   * tail comes back when it is ON again: its sounding notes are released and what was
+   * scheduled ahead is dropped (LEAD at once, DRONE with its effect tails too). Its
+   * sequencer and the clock keep running, so it comes back in time. The gate has already
+   * faded it out.
+   */
+  private applyOnOff(scene: AudioScene, time: number): void {
+    const before = this.on;
+    this.on = scene.on;
+    for (const id of MUTE_IDS) {
+      if (!before[id] || scene.on[id]) continue;
+      if (id === DRUM) this.drum?.cancelAfter(time);
+      else if (id === LEAD) this.lead.flush(time, true);
+      else if (id === DRONE) this.drone?.clear(time);
+      else this.tracks.find((track) => track.id === id)?.flush(time);
+    }
+  }
+
   /** The level knob of an instrument, as a gain (1 for nodes without one). */
   private levelOf(scene: AudioScene, id: NodeId): number {
     const knob = LEVEL_KNOBS[id];
@@ -460,7 +493,7 @@ export class WebAudioBackend implements AudioBackend {
   /** Adds a module to the graph; an instrument with a level knob goes in behind its level. */
   private addModule(id: NodeId, module: AudioModule, scene: AudioScene): void {
     if (LEVEL_KNOBS[id]) {
-      const strip = new Strip(this.context!, module, this.levelOf(scene, id));
+      const strip = new Strip(this.context!, module, this.levelOf(scene, id), !this.isOn(scene, id));
       this.strips.set(id, strip);
       this.graph!.add(id, strip);
     } else {
@@ -751,9 +784,11 @@ export class WebAudioBackend implements AudioBackend {
     for (const track of this.tracks) {
       if (this.heard.has(track.id) && track.play(step, time, duration)) sounding.push(track.id);
     }
+    // A node that is OFF runs but is not heard: it does not count as sounding (no light).
+    const lit = sounding.filter((id) => !isMutable(id) || this.on[id]);
     if (this.listener) {
       const sliceBar = this.bass.sliceBar();
-      this.visuals.push({ time, event: sliceBar === undefined ? { step, sounding } : { step, sounding, sliceBar } });
+      this.visuals.push({ time, event: sliceBar === undefined ? { step, sounding: lit } : { step, sounding: lit, sliceBar } });
     }
   }
 

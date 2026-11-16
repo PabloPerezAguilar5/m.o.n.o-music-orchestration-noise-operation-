@@ -22,6 +22,7 @@ export function sceneFromState(state: AppState): AudioScene {
   return {
     bpm: state.transport.bpm,
     nodes: state.added,
+    on: state.on,
     cables: liveCables(state.cables, state.added).map(({ from, to }) => ({ from, to })),
     master: {
       volume: master.volume ?? 0,

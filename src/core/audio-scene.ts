@@ -8,7 +8,7 @@ import type { SynthPreset } from './synth-voices';
 import type { DrumPattern } from './drum-patterns';
 import type { DistSettings } from './dist';
 import type { LfoShape } from './lfo';
-import type { DrumRow, NodeId } from './nodes';
+import type { DrumRow, MuteId, NodeId } from './nodes';
 import type { Link } from './routing';
 import type { BassLoop, SliceBar, SlicePattern } from './slice';
 
@@ -126,6 +126,8 @@ export interface AudioScene {
    * canvas. Sound cables, and the LFO's modulation cables.
    */
   readonly cables: readonly Link[];
+  /** ON/OFF of each instrument with a level knob: OFF is a mute at its output (everything keeps running inside). */
+  readonly on: Readonly<Record<MuteId, boolean>>;
   /** Levels of each instrument, at its output (before its cables), and MASTER's VOL. */
   readonly master: {
     /** Knob values, 0..1. */

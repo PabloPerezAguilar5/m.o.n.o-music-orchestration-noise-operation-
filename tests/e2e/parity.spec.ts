@@ -93,7 +93,8 @@ const hideLeadLevel = (page: Page): Promise<void> =>
     const root = document.querySelector('mono-app')?.shadowRoot?.querySelector('mono-panel')?.shadowRoot;
     if (!root?.querySelector('mono-knob[data-param="leadLevel"]')) throw new Error('LEAD level knob not found');
     const style = document.createElement('style');
-    style.textContent = 'mono-knob[data-param="leadLevel"] { display: none; }';
+    // The knob sits in a `.lv` with its ON/OFF key (deviation 18): the whole column goes.
+    style.textContent = '.lv:has(> mono-knob[data-param="leadLevel"]) { display: none; }';
     root.append(style);
   });
 
@@ -130,18 +131,36 @@ const hidePatchSection = (page: Page): Promise<void> =>
     root.append(style);
   });
 
+/**
+ * 18. ON/OFF (after stage 9): each node's level knob on the MASTER panel gained an ON/OFF
+ *     key right under it. The prototype has none, so the keys are taken out of the layout
+ *     (display: none) in the app's screenshots, like the PATCH section; the knobs are still
+ *     compared. Affects initial, menu-open and panel-master-all-nodes. The prototype itself
+ *     is untouched.
+ */
+const hideOnOffKeys = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const root = document.querySelector('mono-app')?.shadowRoot?.querySelector('mono-panel')?.shadowRoot;
+    if (!root?.querySelector('.pk.onoff')) throw new Error('ON/OFF keys not found');
+    const style = document.createElement('style');
+    style.textContent = '.pk.onoff { display: none !important; }';
+    root.append(style);
+  });
+
 /** Applied to the app right before the screenshot of the named state. */
 const APP_PATCHES: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   initial: async (page) => {
     await hideMetronome(page);
     await hideLeadLevel(page);
     await hidePatchSection(page);
+    await hideOnOffKeys(page);
   },
   'panel-master-all-nodes': async (page) => {
     await hideMetronome(page);
     await hideLeadLevel(page);
     await hideRouting(page);
     await hidePatchSection(page);
+    await hideOnOffKeys(page);
   },
 };
 

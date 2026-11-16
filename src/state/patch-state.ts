@@ -26,6 +26,7 @@ export function patchFromState(state: AppState, name: string, date: string): Pat
     bpm: state.transport.bpm,
     key: state.key,
     nodes: state.added,
+    on: state.on,
     positions,
     params,
     cables: state.cables,
@@ -73,6 +74,7 @@ export function stateFromPatch(current: AppState, patch: Patch): AppState {
   const added = patch.nodes.includes('master') ? patch.nodes : ['master' as const, ...patch.nodes];
   return {
     added,
+    on: patch.on,
     selected: added.includes(current.selected) ? current.selected : 'master',
     positions,
     params,
@@ -128,6 +130,7 @@ export function clearedState(current: AppState): AppState {
  */
 export const persistentSlice = (state: AppState): readonly unknown[] => [
   state.added,
+  state.on,
   state.positions,
   state.params,
   state.key,

@@ -35,6 +35,14 @@ export class Activity extends Emitter implements Source<ReadonlySet<NodeId>> {
     this.refresh(id);
   }
 
+  /** Puts a node's light out at once: a pulse in flight and a hold both end (a node muted). */
+  quiet(id: NodeId): void {
+    clearTimeout(this.timers.get(id));
+    this.timers.delete(id);
+    this.held.delete(id);
+    this.refresh(id);
+  }
+
   private refresh(id: NodeId): void {
     const on = this.held.has(id) || this.timers.has(id);
     if (this.lit.has(id) === on) return;

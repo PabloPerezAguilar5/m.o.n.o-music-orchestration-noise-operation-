@@ -32,6 +32,7 @@ export function linkAudio(
     // Only what sounds: the playhead moving every step must not resend the scene.
     const audible = [
       state.added,
+      state.on,
       state.params.master,
       state.params.drum,
       state.drum,

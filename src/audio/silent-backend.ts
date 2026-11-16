@@ -3,6 +3,7 @@ import { BassSequencer } from '../core/bass-patterns';
 import { clickAt, type Click } from '../core/metronome';
 import type { LiveEvent } from '../core/live-events';
 import type { NodeId } from '../core/nodes';
+import { isMutable } from '../core/nodes';
 import { reaches } from '../core/routing';
 import { bassMidi, synthMidi } from '../core/scales';
 import { LookaheadScheduler } from '../core/scheduler';
@@ -143,7 +144,9 @@ export class SilentBackend implements AudioBackend {
         this.synthEvents.push(...events);
         if (events.some((event) => event.type === 'on')) sounding.push('synth');
       }
-      this.listener?.(sliceBar === undefined ? { step, sounding } : { step, sounding, sliceBar });
+      // A node that is OFF keeps sequencing but does not count as sounding.
+      const lit = sounding.filter((id) => !scene || !isMutable(id) || scene.on[id]);
+      this.listener?.(sliceBar === undefined ? { step, sounding: lit } : { step, sounding: lit, sliceBar });
     }
   }
 }

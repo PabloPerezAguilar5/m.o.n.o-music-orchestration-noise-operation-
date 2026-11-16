@@ -4,6 +4,7 @@ import { DEFAULT_KIT } from '../core/drum-kits';
 import { INITIAL_SEED, patternFromGrid } from '../core/drum-patterns';
 import { DEFAULT_POSITIONS } from '../core/geometry';
 import {
+  allOn,
   DRUM_ROWS,
   drumToneParam,
   drumVolumeParam,
@@ -141,6 +142,7 @@ export function createInitialState(): AppState {
   return {
     added: ['master'],
     selected: 'master',
+    on: allOn(),
     positions: DEFAULT_POSITIONS,
     params,
     key: { root: 0, scale: 'pentaMinor' },

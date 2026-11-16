@@ -4,7 +4,7 @@ import { classMap } from 'lit/directives/class-map.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { CANVAS, type Point } from '../../core/geometry';
 import { MOD_TARGETS } from '../../core/lfo';
-import { INSTRUMENT_IDS, NODE_SPECS, type NodeId } from '../../core/nodes';
+import { INSTRUMENT_IDS, isMutable, NODE_SPECS, type NodeId } from '../../core/nodes';
 import { cableKind, createsLoop, hasAudioInput, type Cable, type ConnectRefusal } from '../../core/routing';
 import { activity, cues, lfoMonitor, pulse, store } from '../../state';
 import { KNOB_LABELS, NODE_NAMES, TEXT } from '../labels';
@@ -168,6 +168,18 @@ export class MonoStage extends LitElement {
         letter-spacing: 0.1em;
         font-family: var(--mono);
       }
+      /* OFF (muted on MASTER): grey with no glow, and a small bar under the name. Cables stay. */
+      .nd.mute path {
+        opacity: 0.6;
+      }
+      .nd.mute text {
+        fill: #55556e;
+      }
+      .nd .mutebar {
+        stroke: #8a8aa6;
+        stroke-width: 3;
+        stroke-linecap: round;
+      }
       .nd.on path {
         stroke: var(--c);
         filter: drop-shadow(0 0 9px var(--c));
@@ -274,6 +286,7 @@ export class MonoStage extends LitElement {
   private readonly playing = new Selector(this, store, (s) => s.transport.playing);
   private readonly lit = new Selector(this, activity, (lit) => lit);
   private readonly cables = new Selector(this, store, (s) => s.cables);
+  private readonly nodeOn = new Selector(this, store, (s) => s.on);
 
   @state() private menuOpen = false;
   @state() private wire: Wire | null = null;
@@ -297,6 +310,11 @@ export class MonoStage extends LitElement {
     this.frame = 0;
     this.drag = null;
     this.wire = null;
+  }
+
+  /** A node switched OFF on MASTER: drawn dead grey, never lit. */
+  private isOff(id: NodeId): boolean {
+    return isMutable(id) && !this.nodeOn.value[id];
   }
 
   override render(): TemplateResult {
@@ -340,7 +358,8 @@ export class MonoStage extends LitElement {
             (id) =>
               nodeView(id, positions[id], {
                 selected: id === selected,
-                lit: lit.has(id),
+                lit: lit.has(id) && !this.isOff(id),
+                muted: this.isOff(id),
                 target: !!wire && wire.from !== id && canLand(this.cables.value, wire.from, id),
                 wire: wire ? NODE_COLORS[wire.from] : null,
               }),

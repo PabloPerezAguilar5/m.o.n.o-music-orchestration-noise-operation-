@@ -31,6 +31,7 @@ el cabezal, las notas tocadas en vivo, la seleccion.
   "bpm": 128,
   "key": { "root": 0, "scale": "pentaMinor" },
   "nodes": ["master", "drum", "bass"],
+  "on": { "synth": true, "drum": true, "bass": false, "drone": true, "lead": true },
   "positions": { "drum": { "x": 110, "y": 235 } },
   "params": { "bass": { "cutoff": 0.45, "chaos": 0.2 } },
   "cables": [{ "from": "drum", "to": "master", "cut": false }],
@@ -52,6 +53,22 @@ el cabezal, las notas tocadas en vivo, la seleccion.
 - `params` puede ser parcial: una perilla que falta toma su valor por defecto,
   nunca el de la sesion anterior, asi el mismo patch carga siempre igual.
 - El archivo exportado es el mismo JSON, con extension `.mono`.
+
+### `on`: ON/OFF de cada nodo
+
+El ON/OFF del MASTER (un mute en la salida de cada nodo con perilla de volumen: SYNTH, DRUM,
+BASS, DRONE y LEAD) viaja en el campo `on`, un booleano por nodo.
+
+- **Es opcional y no sube la version** (`v` sigue en 1): un patch viejo, sin `on` o sin
+  alguno de sus nodos, carga con esos nodos en ON, como sonaban.
+- **Es estricto:** un valor que no es booleano (`"no"`, `0`, `null`) se rechaza con
+  `PatchError('field', 'on.drum')`, y `on` mismo tiene que ser un objeto. Las claves que no son
+  de esos cinco nodos (DISTORSION, LFO, lo que no existe) se descartan.
+- `patchFromState` siempre escribe los cinco; SAVE, LOAD, EXPORT, IMPORT, SHARE, la sesion
+  automatica y CLEAR usan este mismo camino, asi que todos lo conservan. CLEAR deja todo en ON;
+  un nodo que se agrega de nuevo arranca en ON.
+- Un patch en el que un nodo esta en OFF abre con ese nodo en OFF, con el reloj corriendo (el
+  patch no arranca el sonido: eso sigue pasando con el primer toque o PLAY).
 
 ### Migracion
 
@@ -192,6 +209,17 @@ Un campo que **falta** no es un error: toma su valor por defecto. Un patch
   default; el validador contra basura (tipos, claves peligrosas, recortes, limites
   de listas y patrones, cables invalidos, kits y loops inexistentes, 200 KB,
   texto no JSON); migracion (paso a paso, huecos, version nueva); nombre de archivo.
+- `tests/unit/node-on-off.test.ts`: el estado ON/OFF (solo los cinco nodos, nuevo = ON, CLEAR);
+  el patch (ida y vuelta, por JSON, por link SHARE, un patch viejo sin el campo carga todo en ON
+  con la misma version, claves de mas, el validador rechaza lo que no es booleano); la compuerta
+  del `Strip` (fade corto que cierra en exacto cero, el modulo sigue conectado y corriendo, ON
+  de nuevo cancela el cierre, un nodo que nace en OFF nace cerrado); el reloj (un nodo OFF sigue
+  secuenciando y todas sus notas se sueltan, pero no cuenta como "sonando"); LEAD OFF no se
+  enciende con una tecla apretada.
+- `tests/e2e/on-off.spec.ts`: los cinco botones, cada uno bajo su perilla y con el LED del color de
+  su nodo; DRUM OFF (boton en OFF, nodo gris con su barrita, cable intacto, silencio, el reloj
+  sigue, nunca se enciende) y ON de nuevo; recargar; SAVE, LOAD y SHARE; IMPORT de un patch
+  viejo; LEAD y DRONE en OFF; alturas bajas.
 - `tests/unit/patch-link.test.ts`: base64url, codificacion y decodificacion,
   URL completa, formato `1r`, tamano del link, links rotos.
 - `tests/unit/patches.test.ts`: almacenamiento en memoria; `Patches`: guardar,

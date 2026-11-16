@@ -1,4 +1,4 @@
-import type { NodeId } from '../core/nodes';
+import { isMutable, MUTE_IDS, type NodeId } from '../core/nodes';
 import { Activity } from './activity';
 import { Cues } from './cues';
 import { LFO_TRACE_RATE } from '../core/lfo';
@@ -24,10 +24,20 @@ export const store = new Store();
 export const activity = new Activity();
 export const cues = new Cues();
 
-/** Lights a node up briefly, if it is on the canvas. */
+/** Lights a node up briefly, if it is on the canvas and not OFF. */
 export function pulse(id: NodeId, ms?: number): void {
-  if (store.getState().added.includes(id)) activity.pulse(id, ms);
+  const state = store.getState();
+  if (state.added.includes(id) && (!isMutable(id) || state.on[id])) activity.pulse(id, ms);
 }
+
+// A node that goes OFF stops glowing at once.
+let lastOn = store.getState().on;
+store.subscribe(() => {
+  const { on } = store.getState();
+  if (on === lastOn) return;
+  for (const id of MUTE_IDS) if (lastOn[id] && !on[id]) activity.quiet(id);
+  lastOn = on;
+});
 
 /** The LFO's wave as it runs, for drawing. */
 export const lfoMonitor = new LfoMonitor(LFO_TRACE_RATE);
